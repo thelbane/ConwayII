@@ -1,0 +1,20 @@
+{
+	"folders":
+	[
+		{
+			"path": "."
+		}
+	],
+    "settings":
+    {
+        "tab_size": 8
+    },
+    "build_systems":
+    [
+        {
+            "name": "Run",
+            "working_dir": "${project_path:${folder}}",
+            "shell_cmd": "make run"
+        }
+    ]
+}
