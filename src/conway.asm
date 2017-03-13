@@ -115,6 +115,9 @@ y_bottomleft  equ dataWidth*2
 y_bottom      equ dataWidth*2+1
 y_bottomright equ dataWidth*2+2
 
+y_copyfrom    equ y_bottomright+1    ; Relative to current data pointer
+y_copyto      equ dataWidth+2        ; Relative to current neighbor pointer
+
 ; ------------------------------------
 ; Entry Point
 ; ------------------------------------
@@ -126,7 +129,8 @@ main          subroutine
               sta currentPage
               jsr initScreen
               jsr updateData
-              jsr iterate       
+.1            jsr iterate       
+              jmp .1
               rts
               LOG_REGION "main", main, 0
 
@@ -211,7 +215,11 @@ iterate       subroutine
               TOGGLE bottomleft
               TOGGLE bottom
               TOGGLE bottomright
-.continue     sec
+.continue     ldy #y_copyfrom
+              lda (nbrAddr),y
+              ldy #y_copyto
+              sta (dataAddr),y
+              sec
               lda dataAddr
               sbc #1
               sta dataAddr
