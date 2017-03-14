@@ -27,10 +27,12 @@ ZPC3          equ $FD
 
 STACK         equ $100
 
+
 TXTPG0        equ $0400
 TXTPG1        equ $0800
 CLICK         equ $C030
 HOME          equ $FC58
-PUTCHAR       equ $FDED
+RDKEY         EQU $FD0C
+COUT          equ $FDED
 
 EXITDOS       equ $03D0

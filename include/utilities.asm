@@ -14,7 +14,7 @@ printline     subroutine
               lda (ZPA0),y
               beq .cleanup
               ora #%10000000
-              jsr PUTCHAR
+              jsr COUT
               bne .loop
 .cleanup
               lda ZPA0

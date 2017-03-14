@@ -49,6 +49,13 @@
 ;    Most "interesting" conway generations feel like they only update 1/20 - 1/10 of the screen, which gives us approx.
 ;    20 - 45 fps, which is quite respectable.
 ;
+;  n......765
+;         4X3......d
+;         210
+;  Get rules at X data segment, apply to screen (do nothing, enable, disable). If enabled, set 7 in neighbor segment to 1
+;  and enable neighbor bits for 6, 5, 4, 3, 2, 1 and 0. If disabled, set 7 in neighbor segment to 0. Finally, set X+1 in data
+;  segment to 0 to clear as we go.
+
 
               processor 6502
               incdir "include"
@@ -60,6 +67,7 @@
 ; ------------------------------------
 
 DEBUG         equ 1
+USE_MAP       equ 1
 USES_TXTPG0   equ 1
 USES_TXTPG1   equ 0
 
@@ -82,8 +90,8 @@ fieldHeight   equ 24
 dataWidth     equ fieldWidth+2
 dataHeight    equ fieldHeight+2
 
-charOff       equ " " & %00111111
 charOn        equ " " | %10000000
+charOff       equ " " & %00111111
 noChange      equ 0
 
 topleft       equ %10000000
@@ -129,9 +137,8 @@ main          subroutine
               sta currentPage
               jsr initScreen
               jsr updateData
-.1            jsr iterate       
+.1            jsr iterate   
               jmp .1
-              rts
               LOG_REGION "main", main, 0
 
 flipPage      subroutine
@@ -183,10 +190,10 @@ showDebug     subroutine
 
 iterate       subroutine
 
-              mac TOGGLE
+              mac TURN_ON
               ldy #y_{1}
               lda (nbrAddr),y
-              eor #n_{1}
+              ora #n_{1}
               sta (nbrAddr),y
               endm
 
@@ -197,27 +204,36 @@ iterate       subroutine
 .rowLoop      jsr getRow
               lda #fieldWidth-1
               sta .column
-.columnLoop   ldy #0
-              lda (dataAddr),y
+.columnLoop   ldy #0                      ; get neighbor bit flags
+              lda (dataAddr),y            ; at current data address
               tay
-              lda conwayRules,y
-              beq .continue               ; rule says do nothing
+              lda conwayRules,y           ; convert bit flags to cell state character (or 0 for do nothing)
+              beq .updateData             ; rule says do nothing, so update the neighbor data (A = character)
               ldy #0 ; .column
 .column       equ .-1
-              cmp (rowAddr),y
-              beq .continue
-              sta (rowAddr),y
-              TOGGLE topleft
-              TOGGLE top
-              TOGGLE topright
-              TOGGLE left
-              TOGGLE right
-              TOGGLE bottomleft
-              TOGGLE bottom
-              TOGGLE bottomright
-.continue     ldy #y_copyfrom
-              lda (nbrAddr),y
-              ldy #y_copyto
+              sta (rowAddr),y             ; set char based on rule
+.updateData   ldy .column
+              lda (rowAddr),y
+              cmp #charOn
+              bne .clearBit               ; cell is disabled, so clear the topleft neighbor
+              ldy #y_topleft              ; cell is enabled, so do the neighborly thing...
+              lda #n_topleft
+              sta (nbrAddr),y
+              TURN_ON topleft
+              TURN_ON top
+              TURN_ON topright
+              TURN_ON left
+              TURN_ON right
+              TURN_ON bottomleft
+              TURN_ON bottom
+              TURN_ON bottomright
+              bit CLICK
+              jmp .continue
+.clearBit     ldy #y_topleft
+              lda #0
+              sta (nbrAddr),y
+.continue     ldy #1
+              lda #0
               sta (dataAddr),y
               sec
               lda dataAddr
@@ -234,7 +250,8 @@ iterate       subroutine
               sbc #0
               sta nbrAddrH              
 .nextColumn   dec .column
-              bpl .columnLoop
+              bmi .nextRow
+              jmp .columnLoop
 .nextRow      sec
               lda dataAddr
               sbc #2
@@ -257,14 +274,6 @@ iterate       subroutine
 .end          rts
 
 updateData    subroutine
-
-              mac TURN_ON
-              ldy #y_{1}
-              lda (nbrAddr),y
-              ora #n_{1}
-              sta (nbrAddr),y
-              endm
-
               jsr initUpdPtrs
               lda #fieldHeight-1
               sta .row
@@ -454,7 +463,7 @@ tp1tbl        subroutine
               LOG_REGION "tp1tbl", tp1tbl, 1
               endif
 
-              ifconst FAIL
+              if USE_MAP
 initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
@@ -466,35 +475,26 @@ initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00001010,%00000000
               dc.b %00001000,%00000000,%00000000,%00001100,%00000000
               dc.b %00000100,%00000000,%00000000,%00000000,%00000000
-              dc.b %00011100,%00000000,%00000000,%00000000,%00000000
+              dc.b %00011100,%00111000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00011100,%00111000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00011100,%00000000,%00000000,%00000000
+              dc.b %00000000,%00001110,%00000000,%00000000,%00001000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00010100
+              dc.b %00000000,%00111000,%00000000,%00000000,%00010100
+              dc.b %00000000,%01000100,%00001000,%00000000,%00010100
+              dc.b %00000000,%00111000,%00010100,%00000000,%00001000
+              dc.b %00000000,%00000000,%00010100,%00000000,%00000000
               dc.b %00000000,%00000000,%00001000,%00000000,%00000000
-              dc.b %00000000,%00000000,%10001000,%00000000,%00000000
-              dc.b %00000000,%00000000,%10001000,%00000000,%00000000
-              dc.b %00000000,%00000000,%10000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000001,%11000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              endif
-
+              else
 initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00010000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00010000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00010000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%01000000,%00000000,%00010000,%00000000
+              dc.b %00000000,%00100000,%00000000,%00010000,%00011100
+              dc.b %00000000,%11100000,%00000000,%00010000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
@@ -505,7 +505,15 @@ initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+              endif
 initDataLen   equ .-initData
 
 currentPage   dc.b #0
@@ -785,7 +793,7 @@ conwayRules   dc.b charOff
               dc.b charOff
 
               if DEBUG
-debugTable    dc.b "0" | %10000000
+debugTable    dc.b " " | %10000000
               dc.b "1" | %10000000
               dc.b "1" | %10000000
               dc.b "2" | %10000000
