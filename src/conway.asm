@@ -52,7 +52,7 @@ charOff         equ '  | normalText
 
                 if CHARSET == 2
 charOn          equ '  | normalText
-charOff         equ '  & inverseText
+charOff         equ ': & inverseText
                 endif
 
                 if CHARSET == 3
@@ -102,9 +102,7 @@ start           subroutine
                 jsr makeRules                   ; Create Conway rules table
                 jsr initScreen                  ; Render initial cell layout
                 jsr updateData                  ; Initialize backing data based on displayed cells
-                jsr RDKEY
 .1              jsr iterate                     ; Modify and display next generation
-                jsr RDKEY
                 jmp .1                          ; Until cows come home
 
 iterate         subroutine
@@ -364,7 +362,7 @@ makeRules       subroutine                      ; Generate conway rules table
                 dec .neighbors
                 lda .neighbors
                 bne .loop
-                lda #0
+                lda #charOff
                 sta conwayRules
                 rts
 
@@ -438,9 +436,6 @@ textRowsTable   subroutine
                 LOG_REGION "textRowsTable", textRowsTable, 0
 
 initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%01000000,%00000000
                 dc.b %00000000,%00000000,%00000001,%01000000,%00000000
                 dc.b %00000000,%00000110,%00000110,%00000000,%00011000
@@ -461,6 +456,9 @@ initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
 
 initDataLen     equ .-initData
 
@@ -469,13 +467,8 @@ dataSeg         equ .
                 seg.u conwayData                ; uninitialized data segment
                 org dataSeg
 
+                align 256
 conwayRules     ds.b 256                        ; Reserved for rules table
-
-                echo "--------"
-                echo "CALL",[iterate]d,": REM ITERATE"
-                echo "POKE",[currentPage]d,", 0 : REM SET PAGE"
-                echo "--------"
-                echo "Total length:", [.-start]d, "bytes"
 
 datapg0         ds.b dataWidth * dataHeight     ; The start of data page 0 (padded)
 datapg0_last    equ .-n_offset                  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
@@ -486,3 +479,5 @@ datapg1         ds.b dataWidth * dataHeight     ; The start of data page 1 (padd
 datapg1_last    equ .-n_offset                  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
 datapg1_tln     equ datapg1_last - n_offset     ; Top left neighbor of last non-padding cell of page 1
 datapg1_end     equ .-1   
+
+                echo "conwayRules:", conwayRules
