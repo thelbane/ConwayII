@@ -457,7 +457,12 @@ initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
 
 initDataLen     equ .-initData
 
-conwayRules     ds.b 256
+
+dataSeg         equ .
+                seg.u conwayData                ; uninitialized data segment
+                org dataSeg
+
+conwayRules     ds.b 256                        ; Reserved for rules table
 
                 echo "--------"
                 echo "CALL",[iterate]d,": REM ITERATE"
@@ -465,9 +470,6 @@ conwayRules     ds.b 256
                 echo "--------"
                 echo "Total length:", [.-start]d, "bytes"
 
-dataSeg         equ .
-                seg.u conwayData                ; uninitialized data segment
-                org dataSeg
 datapg0         ds.b dataWidth * dataHeight     ; The start of data page 0 (padded)
 datapg0_last    equ .-n_offset                  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
 datapg0_tln     equ datapg0_last - n_offset     ; Top left neighbor of last non-padding cell of page 0
