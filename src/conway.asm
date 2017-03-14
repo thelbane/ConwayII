@@ -3,519 +3,519 @@
 ; thelbane@gmail.com
 ; Created 03/14/2017
 
-              processor 6502
-              incdir "include"
-              include "apple2.asm"
-              include "macros.asm"
+                processor 6502
+                incdir "include"
+                include "apple2.asm"
+                include "macros.asm"
 
 ; ------------------------------------
 ; Build Options
 ; ------------------------------------
 
-USE_MAP       equ 1
-USES_TXTPG0   equ 1
-USES_TXTPG1   equ 0
-NOISY         equ 0
+USE_MAP         equ 1
+USES_TXTPG0     equ 1
+USES_TXTPG1     equ 0
+NOISY           equ 0
 
 ; ------------------------------------
 ; Constants
 ; ------------------------------------
 
-textRow       equ ZPA0
-textRowH      equ ZPA1
+textRow         equ ZPA0
+textRowH        equ ZPA1
 
-mainData      equ ZPC0
-mainDataH     equ ZPC1
+mainData        equ ZPC0
+mainDataH       equ ZPC1
 
-altData       equ ZPC2
-altDataH      equ ZPC3
+altData         equ ZPC2
+altDataH        equ ZPC3
 
-currentPage   equ ZPA2
-temp          equ ZPA3
+currentPage     equ ZPA2
+temp            equ ZPA3
 
-fieldWidth    equ 40
-fieldHeight   equ 24
+fieldWidth      equ 40
+fieldHeight     equ 24
 
-dataWidth     equ fieldWidth+2
-dataHeight    equ fieldHeight+2
+dataWidth       equ fieldWidth+2
+dataHeight      equ fieldHeight+2
 
-charOn        equ " " | %10000000
-charOff       equ " " & %00111111
-noChange      equ 0
+charOn          equ " " | %10000000
+charOff         equ " " & %00111111
+noChange        equ 0
 
-topleft       equ %10000000
-top           equ %01000000
-topright      equ %00100000
-left          equ %00010000
-right         equ %00001000
-bottomleft    equ %00000100
-bottom        equ %00000010
-bottomright   equ %00000001
+topleft         equ %10000000
+top             equ %01000000
+topright        equ %00100000
+left            equ %00010000
+right           equ %00001000
+bottomleft      equ %00000100
+bottom          equ %00000010
+bottomright     equ %00000001
 
-n_topleft     equ bottomright
-n_top         equ bottom
-n_topright    equ bottomleft
-n_left        equ right
-n_right       equ left
-n_bottomleft  equ topright
-n_bottom      equ top
-n_bottomright equ topleft
+n_topleft       equ bottomright
+n_top           equ bottom
+n_topright      equ bottomleft
+n_left          equ right
+n_right         equ left
+n_bottomleft    equ topright
+n_bottom        equ top
+n_bottomright   equ topleft
 
-n_offset      equ dataWidth+1
+n_offset        equ dataWidth+1
 
-y_topleft     equ 0
-y_top         equ 1
-y_topright    equ 2
-y_left        equ dataWidth
-y_right       equ dataWidth+2
-y_bottomleft  equ dataWidth*2
-y_bottom      equ dataWidth*2+1
-y_bottomright equ dataWidth*2+2
+y_topleft       equ 0
+y_top           equ 1
+y_topright      equ 2
+y_left          equ dataWidth
+y_right         equ dataWidth+2
+y_bottomleft    equ dataWidth*2
+y_bottom        equ dataWidth*2+1
+y_bottomright   equ dataWidth*2+2
 
-y_copyfrom    equ y_bottomright+1         ; Relative to current data pointer
-y_copyto      equ dataWidth+2             ; Relative to current neighbor pointer
+y_copyfrom      equ y_bottomright+1             ; Relative to current main pointer
+y_copyto        equ dataWidth+2                 ; Relative to current alt pointer
 
 ; ------------------------------------
 ; Entry Point
 ; ------------------------------------
-              seg program
-              org $C00
+                seg program
+                org $C00
 
-start         subroutine
-              jsr makeRules
-              lda #0
-              sta currentPage
-              jsr initScreen
-              jsr updateData
-.1            jsr iterate
-              jmp .1
-              LOG_REGION "start", start, 0
+start           subroutine
+                jsr makeRules
+                lda #0
+                sta currentPage
+                jsr initScreen
+                jsr updateData
+.1              jsr iterate
+                jmp .1
+                LOG_REGION "start", start, 0
 
-flipPage      subroutine
-              lda #1
-              eor currentPage
-              sta currentPage
-              rts
+flipPage        subroutine
+                lda #1
+                eor currentPage
+                sta currentPage
+                rts
 
-iterate       subroutine
+iterate         subroutine
 
-              mac TURN_ON
-              ldy #y_{1}
-              lda (altData),y
-              ora #n_{1}
-              sta (altData),y
-              endm
+                mac TURN_ON
+                ldy #y_{1}
+                lda (altData),y
+                ora #n_{1}
+                sta (altData),y
+                endm
 
-              jsr flipPage
-              jsr initUpdPtrs
-              lda #fieldHeight-1
-              sta .row
-.rowLoop      jsr getRow
-              lda #fieldWidth-1
-              sta .column
-.columnLoop   ldy #0                      ; get neighbor bit flags
-              lda (mainData),y            ; at current data address
-              tay
-              lda conwayRules,y           ; convert bit flags to cell state character (or 0 for do nothing)
-              beq .updateData             ; rule says do nothing, so update the neighbor data (A = character)
-              ldy #0 ; .column
-.column       equ .-1
-              sta (textRow),y             ; set char based on rule
-.updateData   ldy .column
-              lda (textRow),y
-              cmp #charOn
-              bne .clearBit               ; cell is disabled, so clear the topleft neighbor
-              if NOISY
-              bit CLICK
-              endif
-              ldy #y_topleft              ; cell is enabled, so do the neighborly thing...
-              lda #n_topleft
-              sta (altData),y
-              TURN_ON topleft
-              if NOISY
-              bit CLICK
-              endif
-              TURN_ON top
-              TURN_ON topright
-              TURN_ON left
-              TURN_ON right
-              TURN_ON bottomleft
-              TURN_ON bottom
-              TURN_ON bottomright
-              jmp .continue
+                jsr flipPage
+                jsr initUpdPtrs
+                lda #fieldHeight-1
+                sta .row
+.rowLoop        jsr getRow
+                lda #fieldWidth-1
+                sta .column
+.columnLoop     ldy #0                          ; get neighbor bit flags
+                lda (mainData),y                ; at current data address
+                tay
+                lda conwayRules,y               ; convert bit flags to cell state character (or 0 for do nothing)
+                beq .updateData                 ; rule says do nothing, so update the neighbor data (A = character)
+                ldy #0 ; .column
+.column         equ .-1
+                sta (textRow),y                 ; set char based on rule
+.updateData     ldy .column
+                lda (textRow),y
+                cmp #charOn
+                bne .clearBit                   ; cell is disabled, so clear the topleft neighbor
+                if NOISY
+                bit CLICK
+                endif
+                ldy #y_topleft                  ; cell is enabled, so do the neighborly thing...
+                lda #n_topleft
+                sta (altData),y
+                TURN_ON topleft
+                if NOISY
+                bit CLICK
+                endif
+                TURN_ON top
+                TURN_ON topright
+                TURN_ON left
+                TURN_ON right
+                TURN_ON bottomleft
+                TURN_ON bottom
+                TURN_ON bottomright
+                jmp .continue
 .clearBit
-              ldy #y_topleft
-              lda #0
-              sta (altData),y
+                ldy #y_topleft
+                lda #0
+                sta (altData),y
 
-.continue     ldy #1
-              lda #0
-              sta (mainData),y
-              sec
-              lda mainData
-              sbc #1
-              sta mainData
-              lda mainDataH
-              sbc #0
-              sta mainDataH
-              sec
-              lda altData
-              sbc #1
-              sta altData
-              lda altDataH
-              sbc #0
-              sta altDataH
-.nextColumn   dec .column
-              bmi .nextRow
-              jmp .columnLoop
-.nextRow      sec
-              lda mainData
-              sbc #2
-              sta mainData
-              lda mainDataH
-              sbc #0
-              sta mainDataH
-              sec
-              lda altData
-              sbc #2
-              sta altData
-              lda altDataH
-              sbc #0
-              sta altDataH
-              dec .row
-              lda #0 ; .row
-.row          equ .-1
-              bmi .end
-              jmp .rowLoop
-.end          rts
+.continue       ldy #1
+                lda #0
+                sta (mainData),y
+                sec
+                lda mainData
+                sbc #1
+                sta mainData
+                lda mainDataH
+                sbc #0
+                sta mainDataH
+                sec
+                lda altData
+                sbc #1
+                sta altData
+                lda altDataH
+                sbc #0
+                sta altDataH
+.nextColumn     dec .column
+                bmi .nextRow
+                jmp .columnLoop
+.nextRow        sec
+                lda mainData
+                sbc #2
+                sta mainData
+                lda mainDataH
+                sbc #0
+                sta mainDataH
+                sec
+                lda altData
+                sbc #2
+                sta altData
+                lda altDataH
+                sbc #0
+                sta altDataH
+                dec .row
+                lda #0 ; .row
+.row            equ .-1
+                bmi .end
+                jmp .rowLoop
+.end            rts
 
-updateData    subroutine
-              jsr initUpdPtrs
-              lda #fieldHeight-1
-              sta .row
-.rowLoop      jsr getRow
-              lda #fieldWidth-1
-              sta .column
-.columnLoop   ldy #0 ; .column
-.column       equ .-1
-              lda (textRow),y
-              cmp #charOff
-              beq .nextColumn
-              TURN_ON topleft
-              TURN_ON top
-              TURN_ON topright
-              TURN_ON left
-              TURN_ON right
-              TURN_ON bottomleft
-              TURN_ON bottom
-              TURN_ON bottomright
-.nextColumn   sec
-              lda altData
-              sbc #1
-              sta altData
-              lda altDataH
-              sbc #0
-              sta altDataH
-              dec .column
-              bpl .columnLoop
-.nextRow      sec
-              lda altData
-              sbc #2
-              sta altData
-              lda altDataH
-              sbc #0
-              sta altDataH
-              dec .row
-              lda #0 ; .row
-.row          equ .-1
-              bpl .rowLoop
-              rts
+updateData      subroutine
+                jsr initUpdPtrs
+                lda #fieldHeight-1
+                sta .row
+.rowLoop        jsr getRow
+                lda #fieldWidth-1
+                sta .column
+.columnLoop     ldy #0 ; .column
+.column         equ .-1
+                lda (textRow),y
+                cmp #charOff
+                beq .nextColumn
+                TURN_ON topleft
+                TURN_ON top
+                TURN_ON topright
+                TURN_ON left
+                TURN_ON right
+                TURN_ON bottomleft
+                TURN_ON bottom
+                TURN_ON bottomright
+.nextColumn     sec
+                lda altData
+                sbc #1
+                sta altData
+                lda altDataH
+                sbc #0
+                sta altDataH
+                dec .column
+                bpl .columnLoop
+.nextRow        sec
+                lda altData
+                sbc #2
+                sta altData
+                lda altDataH
+                sbc #0
+                sta altDataH
+                dec .row
+                lda #0 ; .row
+.row            equ .-1
+                bpl .rowLoop
+                rts
 
-initUpdPtrs   subroutine                  ; Initializes the relevant data pointers
-              lda currentPage
-              bne .page1
-.page0        lda <#datapg0_last
-              sta mainData
-              lda >#datapg0_last
-              sta mainDataH
-              lda <#datapg1_tln
-              sta altData
-              lda >#datapg1_tln
-              sta altDataH
-              jmp .continue
-.page1        lda <#datapg1_last
-              sta mainData
-              lda >#datapg1_last
-              sta mainDataH
-              lda <#datapg0_tln
-              sta altData
-              lda >#datapg0_tln
-              sta altDataH
-.continue     rts
+initUpdPtrs     subroutine                      ; Initializes the relevant data pointers
+                lda currentPage
+                bne .page1
+.page0          lda <#datapg0_last
+                sta mainData
+                lda >#datapg0_last
+                sta mainDataH
+                lda <#datapg1_tln
+                sta altData
+                lda >#datapg1_tln
+                sta altDataH
+                jmp .continue
+.page1          lda <#datapg1_last
+                sta mainData
+                lda >#datapg1_last
+                sta mainDataH
+                lda <#datapg0_tln
+                sta altData
+                lda >#datapg0_tln
+                sta altDataH
+.continue       rts
 
-initScreen    subroutine
-              lda <#initData
-              sta mainData
-              lda >#initData
-              sta mainDataH
-              lda #initDataLen-1          ; get data length
-              sta .dataoffset             ; save it
-              lda #fieldHeight-1          ; load the field height
-              sta .row                    ; save in row counter
-.1            jsr getRow                  ; update textRow (A = row)
-              lda #fieldWidth-1           ; load the field width (reset every new row)
-              sta .column                 ; save in column counter
-              ldy .dataoffset
-              lda (mainData),y            ; get the current data byte
-              sta .byte                   ; save it
-              lda #8                      ; init the byte counter
-              sta .bit                    ; save in bit counter
-.2            ldy .column
-              lda #0
-.byte         equ .-1
-              lsr
-              sta .byte
-              bcs .turnOn
-.turnOff      lda #charOff
-              bne .draw
-.turnOn       lda #charOn
-.draw         sta (textRow),y
-              dec .bit
-              bne .skipbit
-              lda #8                      ; reset bit counter
-              sta .bit                    ; decrease data byte reference
-              sec
-              dec .dataoffset
-              ldy #0 ; .dataoffset
-.dataoffset   equ .-1
-              lda (mainData),y
-              sta .byte
-.skipbit      lda .column                 ; start to calculate init byte offset
-              dec .column
-              ldy #0 ; .column
-.column       equ .-1
-              bpl .2
-              dec .row
-              lda #0 ; .row
-.row          equ .-1
-              bpl .1
-              rts
-.bit          ds.b
+initScreen      subroutine
+                lda <#initData
+                sta mainData
+                lda >#initData
+                sta mainDataH
+                lda #initDataLen-1              ; get data length
+                sta .dataoffset                 ; save it
+                lda #fieldHeight-1              ; load the field height
+                sta .row                        ; save in row counter
+.1              jsr getRow                      ; update textRow (A = row)
+                lda #fieldWidth-1               ; load the field width (reset every new row)
+                sta .column                     ; save in column counter
+                ldy .dataoffset
+                lda (mainData),y                ; get the current data byte
+                sta .byte                       ; save it
+                lda #8                          ; init the byte counter
+                sta .bit                        ; save in bit counter
+.2              ldy .column
+                lda #0
+.byte           equ .-1
+                lsr
+                sta .byte
+                bcs .turnOn
+.turnOff        lda #charOff
+                bne .draw
+.turnOn         lda #charOn
+.draw           sta (textRow),y
+                dec .bit
+                bne .skipbit
+                lda #8                          ; reset bit counter
+                sta .bit                        ; decrease data byte reference
+                sec
+                dec .dataoffset
+                ldy #0 ; .dataoffset
+.dataoffset     equ .-1
+                lda (mainData),y
+                sta .byte
+.skipbit        lda .column                     ; start to calculate init byte offset
+                dec .column
+                ldy #0 ; .column
+.column         equ .-1
+                bpl .2
+                dec .row
+                lda #0 ; .row
+.row            equ .-1
+                bpl .1
+                rts
+.bit            ds.b
 
 ; inputs:
 ; ?
 ; outputs:
 ; ?
-setPoint      subroutine
-              jsr getRow
-              lda #charOn
-              sta (textRow),y
-              rts
+setPoint        subroutine
+                jsr getRow
+                lda #charOn
+                sta (textRow),y
+                rts
 
 ; inputs:
 ; A = screen character code
 ; outputs:
 ; A = $FF, X = ?, Y = $FF
-fillScreen    subroutine
-              sta .char
-              lda #fieldHeight-1
-              sta .row
-.1            jsr getRow
-              ldy #fieldWidth-1
-.2            lda #0 ; .char
-.char         equ .-1
-              sta (textRow),y
-              dey
-              bpl .2
-              dec .row
-              lda #0 ; .row
-.row          equ .-1
-              bpl .1
-              rts
-              LOG_REGION "fillScreen", fillScreen, 0
+fillScreen      subroutine
+                sta .char
+                lda #fieldHeight-1
+                sta .row
+.1              jsr getRow
+                ldy #fieldWidth-1
+.2              lda #0 ; .char
+.char           equ .-1
+                sta (textRow),y
+                dey
+                bpl .2
+                dec .row
+                lda #0 ; .row
+.row            equ .-1
+                bpl .1
+                rts
+                LOG_REGION "fillScreen", fillScreen, 0
 ; inputs:
 ; A = row
 ; outputs:
 ; A = ?, X = A << 1
-getRow        subroutine
-              asl
-              tax
-              lda tp0tbl,x
-              sta textRow
-              lda tp0tbl+1,x
-              sta textRowH
-              rts
-              LOG_REGION "getRow", getRow, 0
+getRow          subroutine
+                asl
+                tax
+                lda tp0tbl,x
+                sta textRow
+                lda tp0tbl+1,x
+                sta textRowH
+                rts
+                LOG_REGION "getRow", getRow, 0
 
-makeRules     subroutine           ; Generate conway rules table
-              lda #$ff
-              sta .neighbors
-.loop         jsr getRule
-              ldx #0
-.neighbors    equ .-1
-              sta conwayRules,x
-              dec .neighbors
-              lda .neighbors
-              bne .loop 
-              lda #0
-              sta conwayRules
-              rts
+makeRules       subroutine                      ; Generate conway rules table
+                lda #$ff
+                sta .neighbors
+.loop           jsr getRule
+                ldx #0
+.neighbors      equ .-1
+                sta conwayRules,x
+                dec .neighbors
+                lda .neighbors
+                bne .loop
+                lda #0
+                sta conwayRules
+                rts
 
-getRule       subroutine           ; Returns #charOn, #charOff, or 0 (if no change)
-              jsr countBits        ; Translate bit pattern to number of neighbors
-              cmp #2
-              bcc .off             ; Fewer than 2 neighbors, dies of loneliness
-              cmp #3
-              beq .on              ; Exactly 3 neighbors, reproduces
-              bcs .off             ; More than 3 neighbors, dies of overpopulation 
-              lda #0               ; Else (exactly 2 neighbors), no change
-              rts
-.off          lda #charOff
-              rts
-.on           lda #charOn
-              rts
+getRule         subroutine                      ; Returns #charOn, #charOff, or 0 (if no change)
+                jsr countBits                   ; Translate bit pattern to number of neighbors
+                cmp #2
+                bcc .off                        ; Fewer than 2 neighbors, dies of loneliness
+                cmp #3
+                beq .on                         ; Exactly 3 neighbors, reproduces
+                bcs .off                        ; More than 3 neighbors, dies of overpopulation
+                lda #0                          ; Else (exactly 2 neighbors), no change
+                rts
+.off            lda #charOff
+                rts
+.on             lda #charOn
+                rts
 
-countBits     subroutine           ; Compute Hamming Weight (number of enabled bits) in A
-.f1           equ %01010101        ; see: https://en.wikipedia.org/wiki/Hamming_weight
-.f2           equ %00110011        ; (Takes approx. 1/2 the time compared to lsr/adc loop.)
-.f3           equ %00001111
-              tax
-              and #.f1
-              sta .store1
-              txa
-              lsr
-              and #.f1
-              clc
-              adc #0               ; .store1
-.store1       equ .-1
-              tax
-              and #.f2
-              sta .store2
-              txa
-              lsr
-              lsr
-              and #.f2
-              clc
-              adc #0               ; .store2
-.store2       equ .-1
-              tax
-              and #.f3
-              sta .store3
-              txa
-              lsr
-              lsr
-              lsr
-              lsr
-              and #.f3
-              clc
-              adc #0               ; .store3
-.store3       equ .-1
-              rts
+countBits       subroutine                      ; Compute Hamming Weight (number of enabled bits) in A
+.f1             equ %01010101                   ; see: https://en.wikipedia.org/wiki/Hamming_weight
+.f2             equ %00110011                   ; (Takes approx. 1/2 the time compared to lsr/adc loop.)
+.f3             equ %00001111
+                tax
+                and #.f1
+                sta .store1
+                txa
+                lsr
+                and #.f1
+                clc
+                adc #0                          ; .store1
+.store1         equ .-1
+                tax
+                and #.f2
+                sta .store2
+                txa
+                lsr
+                lsr
+                and #.f2
+                clc
+                adc #0                          ; .store2
+.store2         equ .-1
+                tax
+                and #.f3
+                sta .store3
+                txa
+                lsr
+                lsr
+                lsr
+                lsr
+                and #.f3
+                clc
+                adc #0                          ; .store3
+.store3         equ .-1
+                rts
 
 ; ------------------------------------
 ; Utilities
 ; ------------------------------------
 
-              include "utilities.asm"
+                include "utilities.asm"
 
 ; ------------------------------------
 ; Tables
 ; ------------------------------------
-              if USES_TXTPG0
-tp0tbl        subroutine
-.pg           equ 1024
-.y            set TXTPG0
-              repeat 24
-              dc.w .pg + (.y & %11111000) * 5 + ((.y & %00000111) << 7)
-.y            set .y + 1
-              repend
-              LOG_REGION "tp0tbl", tp0tbl, 0
-              endif
+                if USES_TXTPG0
+tp0tbl          subroutine
+.pg             equ 1024
+.y              set TXTPG0
+                repeat 24
+                dc.w .pg + (.y & %11111000) * 5 + ((.y & %00000111) << 7)
+.y              set .y + 1
+                repend
+                LOG_REGION "tp0tbl", tp0tbl, 0
+                endif
 
-              if USES_TXTPG1
-              align 256
-tp1tbl        subroutine
-.pg           equ TXTPG1
-.y            set 0
-              repeat 50
-              dc.w .pg + (.y & %11111000) * 5 + ((.y & %00000111) << 7)
-.y            set .y + 1
-              repend
-              LOG_REGION "tp1tbl", tp1tbl, 1
-              endif
+                if USES_TXTPG1
+                align 256
+tp1tbl          subroutine
+.pg             equ TXTPG1
+.y              set 0
+                repeat 50
+                dc.w .pg + (.y & %11111000) * 5 + ((.y & %00000111) << 7)
+.y              set .y + 1
+                repend
+                LOG_REGION "tp1tbl", tp1tbl, 1
+                endif
 
-              if USE_MAP
-initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00100000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00010000,%00000000,%00000000,%00010000
-              dc.b %00000000,%01110000,%00000000,%00000000,%00100000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00111000
-              dc.b %00000000,%00000000,%00000000,%00001000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00001010,%00000000
-              dc.b %00001000,%00000000,%00000000,%00001100,%00000000
-              dc.b %00000100,%00000000,%00000000,%00000000,%00000000
-              dc.b %00011100,%00111000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00011100,%00111000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00001110,%00000000,%00000000,%00001000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00010100
-              dc.b %00000000,%00111000,%00000000,%00000000,%00010100
-              dc.b %00000000,%01000100,%00001000,%00000000,%00010100
-              dc.b %00000000,%00111000,%00010100,%00000000,%00001000
-              dc.b %00000000,%00000000,%00010100,%00000000,%00000000
-              dc.b %00000000,%00000000,%00001000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              else
-initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%01000000,%00000000,%00010000,%00000000
-              dc.b %00000000,%00100000,%00000000,%00010000,%00011100
-              dc.b %00000000,%11100000,%00000000,%00010000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-              endif
-initDataLen   equ .-initData
+                if USE_MAP
+initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00100000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00010000,%00000000,%00000000,%00010000
+                dc.b %00000000,%01110000,%00000000,%00000000,%00100000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00111000
+                dc.b %00000000,%00000000,%00000000,%00001000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00001010,%00000000
+                dc.b %00001000,%00000000,%00000000,%00001100,%00000000
+                dc.b %00000100,%00000000,%00000000,%00000000,%00000000
+                dc.b %00011100,%00111000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00011100,%00111000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00001110,%00000000,%00000000,%00001000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00010100
+                dc.b %00000000,%00111000,%00000000,%00000000,%00010100
+                dc.b %00000000,%01000100,%00001000,%00000000,%00010100
+                dc.b %00000000,%00111000,%00010100,%00000000,%00001000
+                dc.b %00000000,%00000000,%00010100,%00000000,%00000000
+                dc.b %00000000,%00000000,%00001000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                else
+initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%01000000,%00000000,%00010000,%00000000
+                dc.b %00000000,%00100000,%00000000,%00010000,%00011100
+                dc.b %00000000,%11100000,%00000000,%00010000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
+                endif
+initDataLen     equ .-initData
 
-conwayRules   ds.b 256
+conwayRules     ds.b 256
 
-              echo "--------"
-              echo "CALL",[showDebug]d,": REM SHOW DEBUG"
-              echo "CALL",[flipPage]d,": REM FLIP PAGE"
-              echo "CALL",[iterate]d,": REM ITERATE"
-              echo "POKE",[currentPage]d,", 0 : REM SET PAGE"
-              echo "--------"
-              echo "Total length:", [.-start]d, "bytes"
+                echo "--------"
+                echo "CALL",[showDebug]d,": REM SHOW DEBUG"
+                echo "CALL",[flipPage]d,": REM FLIP PAGE"
+                echo "CALL",[iterate]d,": REM ITERATE"
+                echo "POKE",[currentPage]d,", 0 : REM SET PAGE"
+                echo "--------"
+                echo "Total length:", [.-start]d, "bytes"
 
-dataSeg       equ .
-              seg.u conwayData            ; uninitialized data segment
-              org dataSeg
-datapg0       ds.b dataWidth * dataHeight ; The start of data page 0 (padded)
-datapg0_last  equ .-n_offset              ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
-datapg0_tln   equ datapg0_last - n_offset ; Top left neighbor of last non-padding cell of page 0
-datapg0_end   equ .-1
+dataSeg         equ .
+                seg.u conwayData                ; uninitialized data segment
+                org dataSeg
+datapg0         ds.b dataWidth * dataHeight     ; The start of data page 0 (padded)
+datapg0_last    equ .-n_offset                  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
+datapg0_tln     equ datapg0_last - n_offset     ; Top left neighbor of last non-padding cell of page 0
+datapg0_end     equ .-1
 
-datapg1       ds.b dataWidth * dataHeight ; The start of data page 1 (padded)
-datapg1_last  equ .-n_offset              ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
-datapg1_tln   equ datapg1_last - n_offset ; Top left neighbor of last non-padding cell of page 1
-datapg1_end   equ .-1
+datapg1         ds.b dataWidth * dataHeight     ; The start of data page 1 (padded)
+datapg1_last    equ .-n_offset                  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
+datapg1_tln     equ datapg1_last - n_offset     ; Top left neighbor of last non-padding cell of page 1
+datapg1_end     equ .-1   
