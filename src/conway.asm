@@ -1,61 +1,7 @@
-; Fast Conway
+; Conway II
 ; Lee W. Fastenau
-; info@leefastenau.com
-; Created 06/29/2010
-
-;
-;  XXX
-;    X
-;   X
-;
-; 012
-; 3X4 %01234567
-; 567
-;
-; 1. Toggle X state toggles inverse relationship bit on surrounding 8 cells (8 instructions without bounds check if padded)
-;    e.g., if toggled, then toggle neighbors (on alt. data page)
-;
-;    sec                                  ; 0  +2
-;    lda currentAddress                   ; 2  +4
-;    sbc #41                              ; 6  +2
-;    sta neighborAddress                  ; 8  +4
-;    lda currentAddress+1                 ; 12 +4
-;    sbc #0                               ; 16 +2
-;    sta neighborAddress+1                ; 18 +4  These 22 cycles could be reduced by tracking down topleft neighbor
-;    ldy #0                               ; 0  +2
-;    lda (neighborAddress),y=0            ; 2  +5/6
-;    eor n_topleft                        ; 8  +2 
-;    sta (neighborAddress),y=0            ; 10 +6
-;    iny                                  ; 16 +2
-;    lda (neighborAddress),y=1            ; 18 +5/6 Repeats 8 times... 16 cycles * 8 = 128 cycles to update one cell
-;    eor n_top                            ;         PLUS 22 cycles for expensive neighbor tracking = 150 cycles
-;    sta (neighborAddress),y=1
-;    etc.
-;
-; 2. Lookup table returns on or off char based on conway rules
-;    e.g., dataCell = %00000111 = $07, ldy dataCell, lda (charLookup),y, A = charOn
-;
-; 3. Screen data can update in real time (based on current data page)... will feel "wrong" because screen will reflect
-;    both current and alt. data pages during refresh cycle. This is okay because the current data page is canon during
-;    the refresh and completely drives the screen
-;
-; 4. Toggles are the most expensive thing that can happen in a cell. Sparse "on" cells should update very quickly, but
-;    for a theorhetically busiest screen scenario, it will take:
-;
-;    150 cycles to toggle each cell
-;    150 * 960cells = 144000 cycles @ 1.023 MHz = 0.14 seconds (But this is still optimistic... doesn't count data traversal or
-;    screen data updates... 100 cycles per cell may be a generous estimate. Using 250 cycles, that still gives us an update
-;    time of .23 seconds. Four frames per second update in an absolutely busy state.
-;    Most "interesting" conway generations feel like they only update 1/20 - 1/10 of the screen, which gives us approx.
-;    20 - 45 fps, which is quite respectable.
-;
-;  n......765
-;         4X3......d
-;         210
-;  Get rules at X data segment, apply to screen (do nothing, enable, disable). If enabled, set 7 in neighbor segment to 1
-;  and enable neighbor bits for 6, 5, 4, 3, 2, 1 and 0. If disabled, set 7 in neighbor segment to 0. Finally, set X+1 in data
-;  segment to 0 to clear as we go.
-
+; thelbane@gmail.com
+; Created 03/14/2017
 
               processor 6502
               incdir "include"
@@ -66,23 +12,26 @@
 ; Build Options
 ; ------------------------------------
 
-DEBUG         equ 1
 USE_MAP       equ 1
 USES_TXTPG0   equ 1
 USES_TXTPG1   equ 0
+NOISY         equ 0
 
 ; ------------------------------------
 ; Constants
 ; ------------------------------------
 
-rowAddr       equ ZPA0
-rowAddrH      equ ZPA1
+textRow       equ ZPA0
+textRowH      equ ZPA1
 
-dataAddr      equ ZPC0
-dataAddrH     equ ZPC1
+mainData      equ ZPC0
+mainDataH     equ ZPC1
 
-nbrAddr       equ ZPC2
-nbrAddrH      equ ZPC3
+altData       equ ZPC2
+altDataH      equ ZPC3
+
+currentPage   equ ZPA2
+temp          equ ZPA3
 
 fieldWidth    equ 40
 fieldHeight   equ 24
@@ -123,8 +72,8 @@ y_bottomleft  equ dataWidth*2
 y_bottom      equ dataWidth*2+1
 y_bottomright equ dataWidth*2+2
 
-y_copyfrom    equ y_bottomright+1    ; Relative to current data pointer
-y_copyto      equ dataWidth+2        ; Relative to current neighbor pointer
+y_copyfrom    equ y_bottomright+1         ; Relative to current data pointer
+y_copyto      equ dataWidth+2             ; Relative to current neighbor pointer
 
 ; ------------------------------------
 ; Entry Point
@@ -132,69 +81,29 @@ y_copyto      equ dataWidth+2        ; Relative to current neighbor pointer
               seg program
               org $C00
 
-main          subroutine
+start         subroutine
+              jsr makeRules
               lda #0
               sta currentPage
               jsr initScreen
               jsr updateData
-.1            jsr iterate   
+.1            jsr iterate
               jmp .1
-              LOG_REGION "main", main, 0
+              LOG_REGION "start", start, 0
 
 flipPage      subroutine
               lda #1
               eor currentPage
               sta currentPage
-              rts 
-
-              if DEBUG
-showDebug     subroutine
-              jsr initUpdPtrs
-              lda #fieldHeight-1
-              sta .row
-.nextRow      jsr getRow
-              lda #fieldWidth-1
-              sta .column
-.nextColumn   ldy #0 ; .column
-.column       equ .-1
-              ldy #0
-              lda (dataAddr),y
-              tay
-              lda debugTable,y
-              ldy .column
-              sta (rowAddr),y
-
-              dec dataAddr
-              lda dataAddr
-              cmp #$FF
-              bne .noDataH
-              dec dataAddrH
-.noDataH
-
-              dec .column
-              bpl .nextColumn
-              sec
-              lda dataAddr
-              sbc #2
-              sta dataAddr
-              lda dataAddrH
-              sbc #0
-              sta dataAddrH
-
-              dec .row
-              lda #0 ; .row
-.row          equ .-1
-              bpl .nextRow
               rts
-              endif
 
 iterate       subroutine
 
               mac TURN_ON
               ldy #y_{1}
-              lda (nbrAddr),y
+              lda (altData),y
               ora #n_{1}
-              sta (nbrAddr),y
+              sta (altData),y
               endm
 
               jsr flipPage
@@ -205,21 +114,27 @@ iterate       subroutine
               lda #fieldWidth-1
               sta .column
 .columnLoop   ldy #0                      ; get neighbor bit flags
-              lda (dataAddr),y            ; at current data address
+              lda (mainData),y            ; at current data address
               tay
               lda conwayRules,y           ; convert bit flags to cell state character (or 0 for do nothing)
               beq .updateData             ; rule says do nothing, so update the neighbor data (A = character)
               ldy #0 ; .column
 .column       equ .-1
-              sta (rowAddr),y             ; set char based on rule
+              sta (textRow),y             ; set char based on rule
 .updateData   ldy .column
-              lda (rowAddr),y
+              lda (textRow),y
               cmp #charOn
               bne .clearBit               ; cell is disabled, so clear the topleft neighbor
+              if NOISY
+              bit CLICK
+              endif
               ldy #y_topleft              ; cell is enabled, so do the neighborly thing...
               lda #n_topleft
-              sta (nbrAddr),y
+              sta (altData),y
               TURN_ON topleft
+              if NOISY
+              bit CLICK
+              endif
               TURN_ON top
               TURN_ON topright
               TURN_ON left
@@ -227,45 +142,46 @@ iterate       subroutine
               TURN_ON bottomleft
               TURN_ON bottom
               TURN_ON bottomright
-              bit CLICK
               jmp .continue
-.clearBit     ldy #y_topleft
+.clearBit
+              ldy #y_topleft
               lda #0
-              sta (nbrAddr),y
+              sta (altData),y
+
 .continue     ldy #1
               lda #0
-              sta (dataAddr),y
+              sta (mainData),y
               sec
-              lda dataAddr
+              lda mainData
               sbc #1
-              sta dataAddr
-              lda dataAddrH
+              sta mainData
+              lda mainDataH
               sbc #0
-              sta dataAddrH
+              sta mainDataH
               sec
-              lda nbrAddr
+              lda altData
               sbc #1
-              sta nbrAddr
-              lda nbrAddrH
+              sta altData
+              lda altDataH
               sbc #0
-              sta nbrAddrH              
+              sta altDataH
 .nextColumn   dec .column
               bmi .nextRow
               jmp .columnLoop
 .nextRow      sec
-              lda dataAddr
+              lda mainData
               sbc #2
-              sta dataAddr
-              lda dataAddrH
+              sta mainData
+              lda mainDataH
               sbc #0
-              sta dataAddrH
+              sta mainDataH
               sec
-              lda nbrAddr
+              lda altData
               sbc #2
-              sta nbrAddr
-              lda nbrAddrH
+              sta altData
+              lda altDataH
               sbc #0
-              sta nbrAddrH
+              sta altDataH
               dec .row
               lda #0 ; .row
 .row          equ .-1
@@ -282,7 +198,7 @@ updateData    subroutine
               sta .column
 .columnLoop   ldy #0 ; .column
 .column       equ .-1
-              lda (rowAddr),y
+              lda (textRow),y
               cmp #charOff
               beq .nextColumn
               TURN_ON topleft
@@ -294,21 +210,21 @@ updateData    subroutine
               TURN_ON bottom
               TURN_ON bottomright
 .nextColumn   sec
-              lda nbrAddr
+              lda altData
               sbc #1
-              sta nbrAddr
-              lda nbrAddrH
+              sta altData
+              lda altDataH
               sbc #0
-              sta nbrAddrH
+              sta altDataH
               dec .column
               bpl .columnLoop
 .nextRow      sec
-              lda nbrAddr
+              lda altData
               sbc #2
-              sta nbrAddr
-              lda nbrAddrH
+              sta altData
+              lda altDataH
               sbc #0
-              sta nbrAddrH
+              sta altDataH
               dec .row
               lda #0 ; .row
 .row          equ .-1
@@ -319,38 +235,38 @@ initUpdPtrs   subroutine                  ; Initializes the relevant data pointe
               lda currentPage
               bne .page1
 .page0        lda <#datapg0_last
-              sta dataAddr
+              sta mainData
               lda >#datapg0_last
-              sta dataAddrH
+              sta mainDataH
               lda <#datapg1_tln
-              sta nbrAddr
+              sta altData
               lda >#datapg1_tln
-              sta nbrAddrH
+              sta altDataH
               jmp .continue
 .page1        lda <#datapg1_last
-              sta dataAddr
+              sta mainData
               lda >#datapg1_last
-              sta dataAddrH
+              sta mainDataH
               lda <#datapg0_tln
-              sta nbrAddr
+              sta altData
               lda >#datapg0_tln
-              sta nbrAddrH
+              sta altDataH
 .continue     rts
 
 initScreen    subroutine
               lda <#initData
-              sta dataAddr
+              sta mainData
               lda >#initData
-              sta dataAddrH
+              sta mainDataH
               lda #initDataLen-1          ; get data length
               sta .dataoffset             ; save it
               lda #fieldHeight-1          ; load the field height
               sta .row                    ; save in row counter
-.1            jsr getRow                  ; update rowAddr (A = row)
+.1            jsr getRow                  ; update textRow (A = row)
               lda #fieldWidth-1           ; load the field width (reset every new row)
               sta .column                 ; save in column counter
               ldy .dataoffset
-              lda (dataAddr),y            ; get the current data byte
+              lda (mainData),y            ; get the current data byte
               sta .byte                   ; save it
               lda #8                      ; init the byte counter
               sta .bit                    ; save in bit counter
@@ -363,7 +279,7 @@ initScreen    subroutine
 .turnOff      lda #charOff
               bne .draw
 .turnOn       lda #charOn
-.draw         sta (rowAddr),y
+.draw         sta (textRow),y
               dec .bit
               bne .skipbit
               lda #8                      ; reset bit counter
@@ -372,7 +288,7 @@ initScreen    subroutine
               dec .dataoffset
               ldy #0 ; .dataoffset
 .dataoffset   equ .-1
-              lda (dataAddr),y
+              lda (mainData),y
               sta .byte
 .skipbit      lda .column                 ; start to calculate init byte offset
               dec .column
@@ -393,7 +309,7 @@ initScreen    subroutine
 setPoint      subroutine
               jsr getRow
               lda #charOn
-              sta (rowAddr),y
+              sta (textRow),y
               rts
 
 ; inputs:
@@ -408,7 +324,7 @@ fillScreen    subroutine
               ldy #fieldWidth-1
 .2            lda #0 ; .char
 .char         equ .-1
-              sta (rowAddr),y
+              sta (textRow),y
               dey
               bpl .2
               dec .row
@@ -425,11 +341,76 @@ getRow        subroutine
               asl
               tax
               lda tp0tbl,x
-              sta rowAddr
+              sta textRow
               lda tp0tbl+1,x
-              sta rowAddrH
+              sta textRowH
               rts
               LOG_REGION "getRow", getRow, 0
+
+makeRules     subroutine           ; Generate conway rules table
+              lda #$ff
+              sta .neighbors
+.loop         jsr getRule
+              ldx #0
+.neighbors    equ .-1
+              sta conwayRules,x
+              dec .neighbors
+              lda .neighbors
+              bne .loop 
+              lda #0
+              sta conwayRules
+              rts
+
+getRule       subroutine           ; Returns #charOn, #charOff, or 0 (if no change)
+              jsr countBits        ; Translate bit pattern to number of neighbors
+              cmp #2
+              bcc .off             ; Fewer than 2 neighbors, dies of loneliness
+              cmp #3
+              beq .on              ; Exactly 3 neighbors, reproduces
+              bcs .off             ; More than 3 neighbors, dies of overpopulation 
+              lda #0               ; Else (exactly 2 neighbors), no change
+              rts
+.off          lda #charOff
+              rts
+.on           lda #charOn
+              rts
+
+countBits     subroutine           ; Compute Hamming Weight (number of enabled bits) in A
+.f1           equ %01010101        ; see: https://en.wikipedia.org/wiki/Hamming_weight
+.f2           equ %00110011        ; (Takes approx. 1/2 the time compared to lsr/adc loop.)
+.f3           equ %00001111
+              tax
+              and #.f1
+              sta .store1
+              txa
+              lsr
+              and #.f1
+              clc
+              adc #0               ; .store1
+.store1       equ .-1
+              tax
+              and #.f2
+              sta .store2
+              txa
+              lsr
+              lsr
+              and #.f2
+              clc
+              adc #0               ; .store2
+.store2       equ .-1
+              tax
+              and #.f3
+              sta .store3
+              txa
+              lsr
+              lsr
+              lsr
+              lsr
+              and #.f3
+              clc
+              adc #0               ; .store3
+.store3       equ .-1
+              rts
 
 ; ------------------------------------
 ; Utilities
@@ -516,545 +497,15 @@ initData      dc.b %00000000,%00000000,%00000000,%00000000,%00000000
               endif
 initDataLen   equ .-initData
 
-currentPage   dc.b #0
+conwayRules   ds.b 256
 
-;             var loggers = {
-;               console: console.log,
-;               html: (v) => {$("#console").html($("#console").html() + v + "\n")}
-;             }
-;             var log = loggers.html
-;             
-;             for(var i = 0; i<256; i++) {
-;                           var bits = 0
-;               for(var j = 0; j<8; j++) {
-;                           bits += (Math.pow(2,j) & i) > 0 ? 1 : 0
-;               }
-;               var status = "noChange"
-;               if (bits < 2 || bits > 3) status = "charOff"
-;               if (bits == 3) status = "charOn"
-;                           log("\tdc.b " + status)
-;             }
-
-conwayRules   dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOff
-              dc.b noChange
-              dc.b noChange
-              dc.b charOn
-              dc.b charOff
-              dc.b noChange
-              dc.b noChange
-              dc.b charOn
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b noChange
-              dc.b charOn
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b noChange
-              dc.b charOn
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b noChange
-              dc.b charOn
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b noChange
-              dc.b charOn
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b noChange
-              dc.b charOn
-              dc.b charOn
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOn
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-              dc.b charOff
-
-              if DEBUG
-debugTable    dc.b " " | %10000000
-              dc.b "1" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "1" | %10000000
-              dc.b "2" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "2" | %10000000
-              dc.b "3" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "3" | %10000000
-              dc.b "4" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "4" | %10000000
-              dc.b "5" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "5" | %10000000
-              dc.b "6" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "6" | %10000000
-              dc.b "7" | %10000000
-              dc.b "7" | %10000000
-              dc.b "8" | %10000000
-              endif
-
+              echo "--------"
               echo "CALL",[showDebug]d,": REM SHOW DEBUG"
               echo "CALL",[flipPage]d,": REM FLIP PAGE"
               echo "CALL",[iterate]d,": REM ITERATE"
               echo "POKE",[currentPage]d,", 0 : REM SET PAGE"
+              echo "--------"
+              echo "Total length:", [.-start]d, "bytes"
 
 dataSeg       equ .
               seg.u conwayData            ; uninitialized data segment
