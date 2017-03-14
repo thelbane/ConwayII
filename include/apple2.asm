@@ -34,5 +34,6 @@ CLICK         equ $C030
 HOME          equ $FC58
 RDKEY         EQU $FD0C
 COUT          equ $FDED
+OUTPORT       equ $FE95
 
 EXITDOS       equ $03D0

@@ -12,10 +12,8 @@
 ; Build Options
 ; ------------------------------------
 
-USE_MAP         equ 1
-USES_TXTPG0     equ 1
-USES_TXTPG1     equ 0
-NOISY           equ 0
+NOISY           equ 1
+CHARSET         equ 0                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Small O's
 
 ; ------------------------------------
 ; Constants
@@ -39,20 +37,34 @@ fieldHeight     equ 24
 dataWidth       equ fieldWidth+2
 dataHeight      equ fieldHeight+2
 
-charOn          equ " " | %10000000
-charOff         equ " " & %00111111
-noChange        equ 0
+normalText      equ %10000000                   ; 'X | normalText
+inverseText     equ %00111111                   ; 'X & inverseText
 
-topleft         equ %10000000
-top             equ %01000000
-topright        equ %00100000
+                if CHARSET == 0
+charOn          equ '* | normalText
+charOff         equ '. | normalText
+                endif
+
+                if CHARSET == 1
+charOn          equ '  & inverseText
+charOff         equ '  | normalText
+                endif
+
+                if CHARSET == 2
+charOn          equ 'o | normalText
+charOff         equ '  | normalText
+                endif
+
+topleft         equ %10000000                   ; Neighbor bit flags
+top             equ %01000000                   ; All combinations are decoded in conwayRules table
+topright        equ %00100000                   ; This is faster than counting neighbors each pass
 left            equ %00010000
 right           equ %00001000
 bottomleft      equ %00000100
 bottom          equ %00000010
 bottomright     equ %00000001
 
-n_topleft       equ bottomright
+n_topleft       equ bottomright                 ; Inverse neighbor relationships
 n_top           equ bottom
 n_topright      equ bottomleft
 n_left          equ right
@@ -61,9 +73,9 @@ n_bottomleft    equ topright
 n_bottom        equ top
 n_bottomright   equ topleft
 
-n_offset        equ dataWidth+1
+n_offset        equ dataWidth+1                 ; Alt data topleft offset from current cell
 
-y_topleft       equ 0
+y_topleft       equ 0                           ; Alt data pointer offsets
 y_top           equ 1
 y_topright      equ 2
 y_left          equ dataWidth
@@ -72,9 +84,6 @@ y_bottomleft    equ dataWidth*2
 y_bottom        equ dataWidth*2+1
 y_bottomright   equ dataWidth*2+2
 
-y_copyfrom      equ y_bottomright+1             ; Relative to current main pointer
-y_copyto        equ dataWidth+2                 ; Relative to current alt pointer
-
 ; ------------------------------------
 ; Entry Point
 ; ------------------------------------
@@ -82,31 +91,25 @@ y_copyto        equ dataWidth+2                 ; Relative to current alt pointe
                 org $C00
 
 start           subroutine
-                jsr makeRules
                 lda #0
-                sta currentPage
-                jsr initScreen
-                jsr updateData
-.1              jsr iterate
-                jmp .1
-                LOG_REGION "start", start, 0
-
-flipPage        subroutine
-                lda #1
-                eor currentPage
-                sta currentPage
-                rts
+                sta currentPage                 ; Point main data segment to first block
+                jsr OUTPORT                     ; PR#0 (Set output to 40-column text screen)
+                jsr makeRules                   ; Create Conway rules table
+                jsr initScreen                  ; Render initial cell layout
+                jsr updateData                  ; Initialize backing data based on displayed cells
+.1              jsr iterate                     ; Modify and display next generation
+                jmp .1                          ; Until cows come home
 
 iterate         subroutine
-
                 mac TURN_ON
                 ldy #y_{1}
                 lda (altData),y
                 ora #n_{1}
                 sta (altData),y
                 endm
-
-                jsr flipPage
+                lda #1
+                eor currentPage
+                sta currentPage
                 jsr initUpdPtrs
                 lda #fieldHeight-1
                 sta .row
@@ -143,11 +146,9 @@ iterate         subroutine
                 TURN_ON bottom
                 TURN_ON bottomright
                 jmp .continue
-.clearBit
-                ldy #y_topleft
+.clearBit       ldy #y_topleft
                 lda #0
                 sta (altData),y
-
 .continue       ldy #1
                 lda #0
                 sta (mainData),y
@@ -332,7 +333,7 @@ fillScreen      subroutine
 .row            equ .-1
                 bpl .1
                 rts
-                LOG_REGION "fillScreen", fillScreen, 0
+
 ; inputs:
 ; A = row
 ; outputs:
@@ -340,12 +341,11 @@ fillScreen      subroutine
 getRow          subroutine
                 asl
                 tax
-                lda tp0tbl,x
+                lda textRowsTable,x
                 sta textRow
-                lda tp0tbl+1,x
+                lda textRowsTable+1,x
                 sta textRowH
                 rts
-                LOG_REGION "getRow", getRow, 0
 
 makeRules       subroutine                      ; Generate conway rules table
                 lda #$ff
@@ -421,30 +421,15 @@ countBits       subroutine                      ; Compute Hamming Weight (number
 ; ------------------------------------
 ; Tables
 ; ------------------------------------
-                if USES_TXTPG0
-tp0tbl          subroutine
+textRowsTable   subroutine
 .pg             equ 1024
 .y              set TXTPG0
                 repeat 24
                 dc.w .pg + (.y & %11111000) * 5 + ((.y & %00000111) << 7)
 .y              set .y + 1
                 repend
-                LOG_REGION "tp0tbl", tp0tbl, 0
-                endif
+                LOG_REGION "textRowsTable", textRowsTable, 0
 
-                if USES_TXTPG1
-                align 256
-tp1tbl          subroutine
-.pg             equ TXTPG1
-.y              set 0
-                repeat 50
-                dc.w .pg + (.y & %11111000) * 5 + ((.y & %00000111) << 7)
-.y              set .y + 1
-                repend
-                LOG_REGION "tp1tbl", tp1tbl, 1
-                endif
-
-                if USE_MAP
 initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
@@ -469,39 +454,12 @@ initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00001000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                else
-initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%01000000,%00000000,%00010000,%00000000
-                dc.b %00000000,%00100000,%00000000,%00010000,%00011100
-                dc.b %00000000,%11100000,%00000000,%00010000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                dc.b %00000000,%00000000,%00000000,%00000000,%00000000
-                endif
+
 initDataLen     equ .-initData
 
 conwayRules     ds.b 256
 
                 echo "--------"
-                echo "CALL",[showDebug]d,": REM SHOW DEBUG"
-                echo "CALL",[flipPage]d,": REM FLIP PAGE"
                 echo "CALL",[iterate]d,": REM ITERATE"
                 echo "POKE",[currentPage]d,", 0 : REM SET PAGE"
                 echo "--------"
