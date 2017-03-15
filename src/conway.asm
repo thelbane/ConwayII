@@ -107,20 +107,24 @@ start           subroutine
                 jsr makeRules                   ; Create Conway rules table
                 jsr initScreen                  ; Render initial cell layout
                 jsr updateData                  ; Initialize backing data based on displayed cells
-                jsr testLoop
+                jsr perfTest
                 jmp EXITDOS
 
-testLoop        subroutine
-                lda #20
+perfTest        subroutine
+                jsr RDKEY
+                lda #50
+.startTimer     
                 sta .counter
 .loop           jsr iterate
                 dec .counter
-                lda #0                          ; .counter
-.counter        equ .-1
                 bne .loop
+.endTimer
 .break          jsr RDKEY
                 echo "Breakpoint:", .break
                 rts
+.counter        ds.b
+                echo "START TIMER BREAKPOINT:",.startTimer
+                echo "END TIMER BREAKPOINT:",.endTimer
 
 runLoop         subroutine
 .loop           jsr iterate                     ; Modify and display next generation
