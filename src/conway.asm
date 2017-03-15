@@ -13,7 +13,7 @@
 ; ------------------------------------
 
 NOISY           equ 1
-CHARSET         equ 2                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's
+CHARSET         equ 4                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's, 4 = Experiment
 
 ; ------------------------------------
 ; Constants
@@ -60,6 +60,11 @@ charOn          equ 'o | normalText
 charOff         equ '  | normalText
                 endif
 
+                if CHARSET == 4
+charOn          equ '* & inverseText
+charOff         equ '  | normalText
+                endif
+
 topleft         equ %10000000                   ; Neighbor bit flags
 top             equ %01000000                   ; All combinations are decoded in conwayRules table
 topright        equ %00100000                   ; This is faster than counting neighbors each pass
@@ -102,8 +107,24 @@ start           subroutine
                 jsr makeRules                   ; Create Conway rules table
                 jsr initScreen                  ; Render initial cell layout
                 jsr updateData                  ; Initialize backing data based on displayed cells
-.1              jsr iterate                     ; Modify and display next generation
-                jmp .1                          ; Until cows come home
+                jsr testLoop
+                jmp EXITDOS
+
+testLoop        subroutine
+                lda #20
+                sta .counter
+.loop           jsr iterate
+                dec .counter
+                lda #0                          ; .counter
+.counter        equ .-1
+                bne .loop
+.break          jsr RDKEY
+                echo "Breakpoint:", .break
+                rts
+
+runLoop         subroutine
+.loop           jsr iterate                     ; Modify and display next generation
+                jmp .loop                       ; Until cows come home
 
 iterate         subroutine
                 mac TURN_ON
@@ -125,13 +146,14 @@ iterate         subroutine
                 lda (mainData),y                ; at current data address
                 tay
                 lda conwayRules,y               ; convert bit flags to cell state character (or 0 for do nothing)
-                beq .updateData                 ; rule says do nothing, so update the neighbor data (A = character)
+                beq .doNothing                  ; rule says do nothing, so update the neighbor data
                 ldy #0 ; .column
 .column         equ .-1
                 sta (textRow),y                 ; set char based on rule
-.updateData     ldy .column
+                bne .updateData
+.doNothing      ldy .column
                 lda (textRow),y
-                cmp #charOn
+.updateData     cmp #charOn                     ; A = cell character
                 bne .clearBit                   ; cell is disabled, so clear the topleft neighbor
                 if NOISY
                 bit CLICK
