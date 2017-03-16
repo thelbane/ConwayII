@@ -27,7 +27,7 @@
 
 NOISY           equ 1
 CHARSET         equ 4                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's, 4 = Experiment
-TEST_PERF       equ 0
+TEST_PERF       equ 1
 
 ; ------------------------------------
 ; Constants
@@ -134,8 +134,8 @@ runLoop         subroutine
 
 perfTest        subroutine
                 jsr RDKEY
-                lda #50
 .startTimer     
+                lda #50
                 sta .counter
 .loop           jsr iterate
                 dec .counter
@@ -144,7 +144,7 @@ perfTest        subroutine
 .break          jsr RDKEY
                 echo "Breakpoint:", .break
                 rts
-.counter        ds.b
+.counter        ds.b 1
                 echo "START TIMER BREAKPOINT:",.startTimer
                 echo "END TIMER BREAKPOINT:",.endTimer
 
@@ -344,7 +344,7 @@ initScreen      subroutine
 .row            equ .-1
                 bpl .1
                 rts
-.bit            ds.b
+.bit            ds.b 1
 
 ; inputs:
 ; ?
