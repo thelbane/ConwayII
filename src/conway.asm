@@ -3,6 +3,19 @@
 ; thelbane@gmail.com
 ; Created 03/14/2017
 
+
+;     .....012                                          * **.
+;          3 4                           * ** **************.
+;          567                  ****************************.
+;                            * ***************************012
+;                             * **************************3 4
+;                            .............................567
+;
+;       1. Setup data indirect pointer per row, use same Y offset that's used to read/set screen char.
+;       2. Data pointer points to first screen char (base row address + 1)
+;       3. Backing pointer continues to update on every cell
+;       4. 
+
                 processor 6502
                 incdir "include"
                 include "apple2.asm"
@@ -146,7 +159,7 @@ iterate         subroutine
 .rowLoop        jsr getRow
                 lda #fieldWidth-1
                 sta .column
-.columnLoop     ldy #0                          ; get neighbor bit flags
+.columnLoop     ldy .column                     ; get neighbor bit flags
                 lda (mainData),y                ; at current data address
                 tay
                 lda conwayRules,y               ; convert bit flags to cell state character (or 0 for do nothing)
@@ -184,13 +197,6 @@ iterate         subroutine
                 lda #0
                 sta (mainData),y
                 sec
-                lda mainData
-                sbc #1
-                sta mainData
-                lda mainDataH
-                sbc #0
-                sta mainDataH
-                sec
                 lda altData
                 sbc #1
                 sta altData
@@ -202,7 +208,7 @@ iterate         subroutine
                 jmp .columnLoop
 .nextRow        sec
                 lda mainData
-                sbc #2
+                sbc #dataWidth
                 sta mainData
                 lda mainDataH
                 sbc #0
@@ -266,18 +272,18 @@ updateData      subroutine
 initUpdPtrs     subroutine                      ; Initializes the relevant data pointers
                 lda currentPage
                 bne .page1
-.page0          lda <#datapg0_last
+.page0          lda <#datapg0_lastRow
                 sta mainData
-                lda >#datapg0_last
+                lda >#datapg0_lastRow
                 sta mainDataH
                 lda <#datapg1_tln
                 sta altData
                 lda >#datapg1_tln
                 sta altDataH
                 jmp .continue
-.page1          lda <#datapg1_last
+.page1          lda <#datapg1_lastRow
                 sta mainData
-                lda >#datapg1_last
+                lda >#datapg1_lastRow
                 sta mainDataH
                 lda <#datapg0_tln
                 sta altData
@@ -497,13 +503,11 @@ dataSeg         equ .
 conwayRules     ds.b 256                        ; Reserved for rules table
 
 datapg0         ds.b dataWidth * dataHeight     ; The start of data page 0 (padded)
-datapg0_last    equ .-n_offset                  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
-datapg0_tln     equ datapg0_last - n_offset     ; Top left neighbor of last non-padding cell of page 0
-datapg0_end     equ .-1
+datapg0_lastRow equ . - dataWidth - fieldWidth                  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
+datapg0_tln     equ . - [n_offset * 2]          ; Top left neighbor of last non-padding cell of page 0
 
 datapg1         ds.b dataWidth * dataHeight     ; The start of data page 1 (padded)
-datapg1_last    equ .-n_offset                  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
-datapg1_tln     equ datapg1_last - n_offset     ; Top left neighbor of last non-padding cell of page 1
-datapg1_end     equ .-1   
+datapg1_lastRow equ . - dataWidth - fieldWidth                  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
+datapg1_tln     equ . - [n_offset * 2]          ; Top left neighbor of last non-padding cell of page 1
 
                 echo "conwayRules:", conwayRules
