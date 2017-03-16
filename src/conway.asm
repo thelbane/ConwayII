@@ -27,6 +27,7 @@
 
 NOISY           equ 1
 CHARSET         equ 4                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's, 4 = Experiment
+TEST_PERF       equ 0
 
 ; ------------------------------------
 ; Constants
@@ -120,8 +121,16 @@ start           subroutine
                 jsr makeRules                   ; Create Conway rules table
                 jsr initScreen                  ; Render initial cell layout
                 jsr updateData                  ; Initialize backing data based on displayed cells
+                if TEST_PERF
                 jsr perfTest
+                else
+                jsr runLoop
+                endif
                 jmp EXITDOS
+
+runLoop         subroutine
+.loop           jsr iterate                     ; Modify and display next generation
+                jmp .loop                       ; Until cows come home
 
 perfTest        subroutine
                 jsr RDKEY
@@ -138,10 +147,6 @@ perfTest        subroutine
 .counter        ds.b
                 echo "START TIMER BREAKPOINT:",.startTimer
                 echo "END TIMER BREAKPOINT:",.endTimer
-
-runLoop         subroutine
-.loop           jsr iterate                     ; Modify and display next generation
-                jmp .loop                       ; Until cows come home
 
 iterate         subroutine
                 mac TURN_ON
@@ -193,7 +198,8 @@ iterate         subroutine
 .clearBit       ldy #y_topleft
                 lda #0
                 sta (altData),y
-.continue       ldy #1
+.continue       ldy .column
+                iny
                 lda #0
                 sta (mainData),y
                 sec
@@ -494,7 +500,6 @@ initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
 
 initDataLen     equ .-initData
 
-
 dataSeg         equ .
                 seg.u conwayData                ; uninitialized data segment
                 org dataSeg
@@ -503,11 +508,11 @@ dataSeg         equ .
 conwayRules     ds.b 256                        ; Reserved for rules table
 
 datapg0         ds.b dataWidth * dataHeight     ; The start of data page 0 (padded)
-datapg0_lastRow equ . - dataWidth - fieldWidth                  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
+datapg0_lastRow equ . - dataWidth - fieldWidth  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
 datapg0_tln     equ . - [n_offset * 2]          ; Top left neighbor of last non-padding cell of page 0
 
 datapg1         ds.b dataWidth * dataHeight     ; The start of data page 1 (padded)
-datapg1_lastRow equ . - dataWidth - fieldWidth                  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
+datapg1_lastRow equ . - dataWidth - fieldWidth  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
 datapg1_tln     equ . - [n_offset * 2]          ; Top left neighbor of last non-padding cell of page 1
 
                 echo "conwayRules:", conwayRules
