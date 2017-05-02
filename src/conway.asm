@@ -180,14 +180,13 @@ iterate         subroutine
                 if NOISY
                 bit CLICK
                 endif
-                ldy #y_topleft                  ; cell is enabled, so do the neighborly thing...
-                lda #n_topleft
-                sta (altData),y
-                TURN_ON topleft
+                ldy #y_topleft                  ; cell is enabled, so turn on corresponding neighbor bits
+                lda #n_topleft                  ; top left neighbor is special since it contains stale data 
+                sta (altData),y                 ; so we just set the whole byte instead of ORing the bit
+                TURN_ON top
                 if NOISY
                 bit CLICK
                 endif
-                TURN_ON top
                 TURN_ON topright
                 TURN_ON left
                 TURN_ON right
@@ -195,7 +194,7 @@ iterate         subroutine
                 TURN_ON bottom
                 TURN_ON bottomright
                 jmp .continue
-.clearBit       ldy #y_topleft
+.clearBit       ldy #y_topleft                  ; cell is disabled, so clear the topleft neighbor (just like it said above)
                 lda #0
                 sta (altData),y
 .continue       ldy .column
