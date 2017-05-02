@@ -157,13 +157,10 @@ iterate         subroutine
                 sta (altData),y
                 endm
 
-                lda #1
-                eor currentPage
-                sta currentPage
-                jsr initUpdPtrs
+                jsr toggleDataPages
                 lda #fieldHeight-1
                 sta .row
-.rowLoop        jsr getRow
+.rowLoop        jsr getTextRow
                 lda #fieldWidth-1
                 sta .column
 .columnLoop     ldy .column                     ; get neighbor bit flags
@@ -200,7 +197,7 @@ iterate         subroutine
                 lda #0
                 sta (altData),y
 .continue       ldy .column
-                iny
+                
                 lda #0
                 sta (mainData),y
                 sec
@@ -235,10 +232,10 @@ iterate         subroutine
 .end            rts
 
 updateData      subroutine
-                jsr initUpdPtrs
+                jsr toggleDataPages
                 lda #fieldHeight-1
                 sta .row
-.rowLoop        jsr getRow
+.rowLoop        jsr getTextRow
                 lda #fieldWidth-1
                 sta .column
 .columnLoop     ldy #0 ; .column
@@ -276,8 +273,10 @@ updateData      subroutine
                 bpl .rowLoop
                 rts
 
-initUpdPtrs     subroutine                      ; Initializes the relevant data pointers
-                lda currentPage
+toggleDataPages subroutine                      ; toggles the current data page and sets up the pointers
+                lda #1
+                eor currentPage
+                sta currentPage
                 bne .page1
 .page0          lda <#datapg0_lastRow
                 sta mainData
@@ -307,7 +306,7 @@ initScreen      subroutine
                 sta .dataoffset                 ; save it
                 lda #fieldHeight-1              ; load the field height
                 sta .row                        ; save in row counter
-.1              jsr getRow                      ; update textRow (A = row)
+.1              jsr getTextRow                  ; update textRow (A = row)
                 lda #fieldWidth-1               ; load the field width (reset every new row)
                 sta .column                     ; save in column counter
                 ldy .dataoffset
@@ -345,44 +344,14 @@ initScreen      subroutine
 .row            equ .-1
                 bpl .1
                 rts
+
 .bit            ds.b 1
-
-; inputs:
-; ?
-; outputs:
-; ?
-setPoint        subroutine
-                jsr getRow
-                lda #charOn
-                sta (textRow),y
-                rts
-
-; inputs:
-; A = screen character code
-; outputs:
-; A = $FF, X = ?, Y = $FF
-fillScreen      subroutine
-                sta .char
-                lda #fieldHeight-1
-                sta .row
-.1              jsr getRow
-                ldy #fieldWidth-1
-.2              lda #0 ; .char
-.char           equ .-1
-                sta (textRow),y
-                dey
-                bpl .2
-                dec .row
-                lda #0 ; .row
-.row            equ .-1
-                bpl .1
-                rts
 
 ; inputs:
 ; A = row
 ; outputs:
-; A = ?, X = A << 1
-getRow          subroutine
+; A = ?, X = A << 1, textRow = address of first character in row A
+getTextRow      subroutine
                 asl
                 tax
                 lda textRowsTable,x
@@ -394,14 +363,14 @@ getRow          subroutine
 makeRules       subroutine                      ; Generate conway rules table
                 lda #$ff
                 sta .neighbors
-.loop           jsr getRule
+.loop           jsr getRule                     ; get the on/off char based on hamming weight of .neighbors...
                 ldx #0
 .neighbors      equ .-1
-                sta conwayRules,x
+                sta conwayRules,x               ; ...and store it.
                 dec .neighbors
                 lda .neighbors
                 bne .loop
-                lda #charOff
+                lda #charOff                    ; index offset 0 special handling (0 bits = 0 neighbors = turn off)
                 sta conwayRules
                 rts
 
@@ -412,14 +381,14 @@ getRule         subroutine                      ; Returns #charOn, #charOff, or 
                 cmp #3
                 beq .on                         ; Exactly 3 neighbors, reproduces
                 bcs .off                        ; More than 3 neighbors, dies of overpopulation
-                lda #0                          ; Else (exactly 2 neighbors), no change
+                lda #0                          ; Else exactly 2 neighbors, no change
                 rts
 .off            lda #charOff
                 rts
 .on             lda #charOn
                 rts
 
-countBits       subroutine                      ; Compute Hamming Weight (number of enabled bits) in A
+countBits       subroutine                      ; Compute Hamming Weight (number of enabled bits) in Accumulator
 .f1             equ %01010101                   ; see: https://en.wikipedia.org/wiki/Hamming_weight
 .f2             equ %00110011                   ; (Takes approx. 1/2 the time compared to lsr/adc loop.)
 .f3             equ %00001111
@@ -465,7 +434,7 @@ countBits       subroutine                      ; Compute Hamming Weight (number
 ; ------------------------------------
 ; Tables
 ; ------------------------------------
-textRowsTable   subroutine
+textRowsTable   subroutine                      ; Lookup table for text page 0 row addresses
 .pg             equ 1024
 .y              set 0
                 repeat 24
@@ -474,7 +443,7 @@ textRowsTable   subroutine
                 repend
                 LOG_REGION "textRowsTable", textRowsTable, 0
 
-                if 0
+                if 1
 initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%01000000,%00000000
                 dc.b %00000000,%00000000,%00000001,%01000000,%00000000
@@ -532,14 +501,14 @@ dataSeg         equ .
                 org dataSeg
 
                 align 256
-conwayRules     ds.b 256                        ; Reserved for rules table
+conwayRules     ds.b 256                        ; character lookup table goes here (see makeRules subroutine)
 
-datapg0         ds.b dataWidth * dataHeight     ; The start of data page 0 (padded)
-datapg0_lastRow equ . - dataWidth - fieldWidth  ; The last non-padding cell of data page 0 (topleft neighbor of last cell)
-datapg0_tln     equ . - [n_offset * 2]          ; Top left neighbor of last non-padding cell of page 0
+                ds.b dataWidth * dataHeight     ; data page 0
+datapg0_lastRow equ . - dataWidth - fieldWidth  ; first visible cell of the last row
+datapg0_tln     equ . - [n_offset * 2]          ; topleft neighbor of the bottomright-most visible cell
 
-datapg1         ds.b dataWidth * dataHeight     ; The start of data page 1 (padded)
-datapg1_lastRow equ . - dataWidth - fieldWidth  ; The last non-padding cell of data page 1 (topleft neighbor of last cell)
-datapg1_tln     equ . - [n_offset * 2]          ; Top left neighbor of last non-padding cell of page 1
+                ds.b dataWidth * dataHeight     ; data page 1
+datapg1_lastRow equ . - dataWidth - fieldWidth  ; first visible cell of the last row
+datapg1_tln     equ . - [n_offset * 2]          ; topleft neighbor of the bottomright-most visible cell
 
                 echo "conwayRules:", conwayRules
