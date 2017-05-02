@@ -149,12 +149,14 @@ perfTest        subroutine
                 echo "END TIMER BREAKPOINT:",.endTimer
 
 iterate         subroutine
+
                 mac TURN_ON
                 ldy #y_{1}
                 lda (altData),y
                 ora #n_{1}
                 sta (altData),y
                 endm
+
                 lda #1
                 eor currentPage
                 sta currentPage
@@ -172,20 +174,20 @@ iterate         subroutine
                 ldy #0 ; .column
 .column         equ .-1
                 sta (textRow),y                 ; set char based on rule
-                bne .updateData
+                bne .setBits
 .doNothing      ldy .column
                 lda (textRow),y
-.updateData     cmp #charOn                     ; A = cell character
-                bne .clearBit                   ; cell is disabled, so clear the topleft neighbor
+.setBits        cmp #charOn                     ; A = cell character
+                bne .clearTopLeft               ; cell is disabled, so clear the topleft neighbor
                 if NOISY
                 bit CLICK
                 endif
                 ldy #y_topleft                  ; cell is enabled, so turn on corresponding neighbor bits
                 lda #n_topleft                  ; top left neighbor is special since it contains stale data 
                 sta (altData),y                 ; so we just set the whole byte instead of ORing the bit
-                TURN_ON top
+                TURN_ON top                     
                 if NOISY
-                bit CLICK
+                bit CLICK                       ; (Pretend I'm not here... I just click the speaker)
                 endif
                 TURN_ON topright
                 TURN_ON left
@@ -194,7 +196,7 @@ iterate         subroutine
                 TURN_ON bottom
                 TURN_ON bottomright
                 jmp .continue
-.clearBit       ldy #y_topleft                  ; cell is disabled, so clear the topleft neighbor (just like it said above)
+.clearTopLeft   ldy #y_topleft                  ; cell is disabled, so clear the topleft neighbor (just like it said above)
                 lda #0
                 sta (altData),y
 .continue       ldy .column
