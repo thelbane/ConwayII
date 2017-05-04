@@ -28,7 +28,7 @@
 NOISY           equ 1                           ; 0 = Sound off, 1 = Sound on
 CHARSET         equ 4                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's, 4 = Enhanced
 TEST_PERF       equ 0
-INIT_PATTERN    equ 1                           ; 0 = Glider gun, 1 = "Random", 2 = Edge test
+INIT_PATTERN    equ 2                           ; 0 = Glider gun, 1 = "Random", 2 = Edge test
 
 ; ------------------------------------
 ; Constants
@@ -154,8 +154,6 @@ perfTest        subroutine
                 echo "START TIMER BREAKPOINT:",.startTimer
                 echo "END TIMER BREAKPOINT:",.endTimer
 
-iterate         subroutine
-
                 mac TURN_ON
                 ldy #y_{1}
                 lda (altData),y
@@ -163,6 +161,7 @@ iterate         subroutine
                 sta (altData),y
                 endm
 
+iterate         subroutine
                 jsr toggleDataPages
                 jsr clearBorders
                 lda #fieldHeight-1
@@ -171,7 +170,7 @@ iterate         subroutine
                 lda #fieldWidth-1
                 sta .column
                 lda #0
-                ldy #y_top
+                ldy #y_top                      ; clean up stale data
                 sta (altData),y
                 ldy #y_topright
                 sta (altData),y
@@ -205,7 +204,7 @@ iterate         subroutine
                 TURN_ON bottom
                 TURN_ON bottomright
                 jmp .continue
-.clearTopLeft   ldy #y_topleft                  ; cell is disabled, so clear the topleft neighbor (just like it said above)
+.clearTopLeft   ldy #y_topleft
                 lda #0
                 sta (altData),y
 .continue       sec
@@ -241,17 +240,25 @@ iterate         subroutine
 
 updateData      subroutine
                 jsr toggleDataPages
+                jsr clearBorders
                 lda #fieldHeight-1
                 sta .row
 .rowLoop        jsr getTextRow
                 lda #fieldWidth-1
                 sta .column
+                lda #0
+                ldy #y_top                      ; clean up stale data
+                sta (altData),y
+                ldy #y_topright
+                sta (altData),y
 .columnLoop     ldy #0 ; .column
 .column         equ .-1
                 lda (textRow),y
                 cmp #charOff
-                beq .nextColumn
-                TURN_ON topleft
+                beq .clearTopLeft
+                ldy #y_topleft                  ; cell is enabled, so turn on corresponding neighbor bits
+                lda #n_topleft                  ; top left neighbor is special since it contains stale data 
+                sta (altData),y                 ; so we just set the whole byte instead of ORing the bit
                 TURN_ON top
                 TURN_ON topright
                 TURN_ON left
@@ -259,6 +266,10 @@ updateData      subroutine
                 TURN_ON bottomleft
                 TURN_ON bottom
                 TURN_ON bottomright
+                jmp .nextColumn
+.clearTopLeft   ldy #y_topleft
+                lda #0
+                sta (altData),y
 .nextColumn     sec
                 lda altData
                 sbc #1
@@ -278,8 +289,9 @@ updateData      subroutine
                 dec .row
                 lda #0 ; .row
 .row            equ .-1
-                bpl .rowLoop
-                rts
+                bmi .end
+                jmp .rowLoop
+.end            rts
 
 toggleDataPages subroutine                      ; toggles the current data page and sets up the pointers
                 lda #1
