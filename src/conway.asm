@@ -108,6 +108,11 @@ y_bottomleft    equ dataWidth*2
 y_bottom        equ dataWidth*2+1
 y_bottomright   equ dataWidth*2+2
 
+topRow          equ $FF ^ [ topleft | top | topright ]
+bottomRow       equ $FF ^ [ bottomleft | bottom | bottomright ]
+leftColumn      equ $FF ^ [ topleft | left | bottomleft ]
+rightColumn     equ $FF ^ [ topright | right | bottomright ]
+
 ; ------------------------------------
 ; Entry Point
 ; ------------------------------------
@@ -158,11 +163,17 @@ iterate         subroutine
                 endm
 
                 jsr toggleDataPages
+                jsr clearBorders
                 lda #fieldHeight-1
                 sta .row
 .rowLoop        jsr getTextRow
                 lda #fieldWidth-1
                 sta .column
+                lda #0
+                ldy #y_top
+                sta (altData),y
+                ldy #y_topright
+                sta (altData),y
 .columnLoop     ldy .column                     ; get neighbor bit flags
                 lda (mainData),y                ; at current data address
                 tay
@@ -196,11 +207,7 @@ iterate         subroutine
 .clearTopLeft   ldy #y_topleft                  ; cell is disabled, so clear the topleft neighbor (just like it said above)
                 lda #0
                 sta (altData),y
-.continue       ldy .column
-                
-                lda #0
-                sta (mainData),y
-                sec
+.continue       sec
                 lda altData
                 sbc #1
                 sta altData
@@ -296,6 +303,64 @@ toggleDataPages subroutine                      ; toggles the current data page 
                 lda >#datapg0_tln
                 sta altDataH
 .continue       rts
+
+clearBorders    subroutine
+
+                mac CLEAR_BORDERS
+.first          set datapg{1} + dataWidth + 1
+.last           set datapg{1}_end - [dataWidth * 2] + 1
+.clear          set datapg{2}_end - [dataWidth * 2] + 1
+                ldx #fieldWidth
+.hloop          lda .first,x
+                and #topRow
+                sta .first,x
+                lda .last,x
+                and #bottomRow
+                sta .last,x
+                lda #0
+                sta .clear,x
+                dex
+                bne .hloop
+.firstAddr      set ZPB0
+.lastAddr       set ZPB2
+.first          set datapg{1}_end - [dataWidth * 2] + 1
+.last           set .first + fieldWidth - 1
+                lda <#.first
+                sta <.firstAddr
+                lda >#.first
+                sta >.firstAddr
+                lda <#.last
+                sta <.lastAddr
+                lda >#.last
+                sta >.lastAddr
+                ldy #0
+                ldx #fieldHeight
+.vloop          lda (.firstAddr),y
+                and #leftColumn
+                sta (.firstAddr),y
+                lda (.lastAddr),y
+                and #leftColumn
+                sta (.lastAddr),y
+                lda #dataWidth
+                sec
+                sbc <.firstAddr
+                lda #0
+                sbc >.firstAddr
+                lda #dataWidth
+                sec
+                sbc <.lastAddr
+                lda #0
+                sbc >.lastAddr
+                dex
+                bne .vloop
+                endm
+
+                lda currentPage
+                bne .page1
+.page0          CLEAR_BORDERS 0,1
+                rts
+.page1          CLEAR_BORDERS 1,0
+                rts
 
 initScreen      subroutine
                 lda <#initData
@@ -443,7 +508,7 @@ textRowsTable   subroutine                      ; Lookup table for text page 0 r
                 repend
                 LOG_REGION "textRowsTable", textRowsTable, 0
 
-                if 1
+                if 0
 initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%01000000,%00000000
                 dc.b %00000000,%00000000,%00000001,%01000000,%00000000
@@ -503,12 +568,14 @@ dataSeg         equ .
                 align 256
 conwayRules     ds.b 256                        ; character lookup table goes here (see makeRules subroutine)
 
-                ds.b dataWidth * dataHeight     ; data page 0
+datapg0         ds.b dataWidth * dataHeight     ; data page 0
 datapg0_lastRow equ . - dataWidth - fieldWidth  ; first visible cell of the last row
 datapg0_tln     equ . - [n_offset * 2]          ; topleft neighbor of the bottomright-most visible cell
+datapg0_end     equ .
 
-                ds.b dataWidth * dataHeight     ; data page 1
+datapg1         ds.b dataWidth * dataHeight     ; data page 1
 datapg1_lastRow equ . - dataWidth - fieldWidth  ; first visible cell of the last row
 datapg1_tln     equ . - [n_offset * 2]          ; topleft neighbor of the bottomright-most visible cell
+datapg1_end     equ .
 
                 echo "conwayRules:", conwayRules
