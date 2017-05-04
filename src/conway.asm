@@ -3,19 +3,6 @@
 ; thelbane@gmail.com
 ; Created 03/14/2017
 
-
-;     .....012                                          * **.
-;          3 4                           * ** **************.
-;          567                  ****************************.
-;                            * ***************************012
-;                             * **************************3 4
-;                            .............................567
-;
-;       1. Setup data indirect pointer per row, use same Y offset that's used to read/set screen char.
-;       2. Data pointer points to first screen char (base row address + 1)
-;       3. Backing pointer continues to update on every cell
-;       4. 
-
                 processor 6502
                 incdir "include"
                 include "apple2.asm"
