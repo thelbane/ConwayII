@@ -398,14 +398,15 @@ getTextRow      subroutine
                 sta textRowH
                 rts
 
-rulesTable      dc.b charOff
-                dc.b charOff
-                dc.b 0
-                dc.b charOn
-                dc.b charOff
-                dc.b charOff
-                dc.b charOff
-                dc.b charOff
+rulesTable      dc.b charOff                    ;0 neighbors
+                dc.b charOff                    ;1
+                dc.b 0                          ;2
+                dc.b charOn                     ;3
+                dc.b charOff                    ;4
+                dc.b charOff                    ;5
+                dc.b charOff                    ;6
+                dc.b charOff                    ;7
+                dc.b charOff                    ;8
 
 ; ------------------------------------
 ; Utilities

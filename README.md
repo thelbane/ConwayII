@@ -56,25 +56,15 @@ Still, here's a list of the optimizations I've made. (Probably not exhaustive.)
   * This removes the need for bounds checking when evaluating neighboring cells in the innermost loop, resulting in a significant speedup.
   * This is a pretty common optimization since it's easy to reason about and implement.
 * Lookup table for rules
-  * Given that every cell has 8 neighbors that are either on or off, it made sense to treat those states as bit flags stored in a single byte.
-  * The bits are arranged as such (the numbers represent bit position from the left):
-```
- 0 1 2     0 = top left neighbor      bitmask: 10000000
- 3   4     1 = top neighbor           bitmask: 01000000
- 5 6 7     2 = top right neighbor     bitmask: 00100000
-           3 = left neighbor          bitmask: 00010000
-           4 = right neighbor         bitmask: 00001000
-           ... etc.
-```
-  * Example: If a cell's bottom three neighbors are turned on, that would be represented with byte %00000111 or $07. And we would find at the 7th index of our lookup table a rule indicating that the cell should be ON since any cell with three neighbors enabled will either stay or turn on (as if by reproduction). In fact, at every index that can be represented by a bit pattern with three bits enabled you'll find an ON rule. Likewise, at index 0 (no enabled bits), 1 (one enabled bit %00000001), 2 (one enabled bit %00000010), 4, 8, 16, 32, 64, and 128, you'll find OFF rules because cells with fewer than 3 neighbors die off (as if by loneliness).
-  * Cells with two neighbors remain unchanged. Cells with greater than 3 neighbors die off (as if by overcrowding).
+  * Each cell can have between 0 and 8 neighbors.
+  * The neighbor count is used as an index to a lookup table that dictates whether a cell is turned on, turned off, or unchanged.
 * Draw and update in the same loop
   * While there's only one visible screen of data, the Conway rules must be applied atomically (all at once), necessitating two pages worth of cell data (one representing the current generation [mainData], and another representing the next generation [altData]).
   * The pointers for mainData and altData swap before each full screen draw cycle.
   * Starting from the bottom right-most cell we work our way left and up the screen, one row at a time.
   * For each cell:
-    * Use the byte in mainData to lookup the rule in the rules table and display a character
-    * If the cell is ON, then update the *neighboring cells* in altData. This is where it gets weird. When we're on cell (x,y), we never actually modify the value of (x,y), we modify (x-1,y-1), (x,y-1), (x+1, y-1), etc. and enable the bits corresponding to the neighbor's relationship to (x,y). e.g., We enable the bottom right (%00000001) bit for our top left neighbor. (It doesn't strictly matter that we set the bit corresponding to the inverse relationship, as long as we're consistent. We only really care about the bit count and not their positions in the resulting byte.)
+    * Use the byte in mainData to lookup the rule in the rules table and display a character.
+    * If the cell is ON, increment the neighbor count for all surrounding cells.
 * Lookup table for screen addresses
   * The Apple II is weird in that text and graphics data is not stored from left to right, top to bottom, in a contiguous chunk of memory. It's stored all haphazard and non-sensical for reasons that others have pontificated on at length.
   * Needless to say, there's math to compute the addresses of a given point on the screen, but math is slow and lookup tables are silly fast.
