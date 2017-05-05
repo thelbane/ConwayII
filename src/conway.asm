@@ -11,15 +11,18 @@
 ; ------------------------------------
 ; Build Options
 ; ------------------------------------
-
+ 
 NOISY           equ 1                           ; 0 = Sound off, 1 = Sound on
 CHARSET         equ 4                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's, 4 = Enhanced
-TEST_PERF       equ 0
 INIT_PATTERN    equ 2                           ; 0 = Glider gun, 1 = "Random", 2 = Edge test
+TEST_PERF       equ 0                           ; 0 = Normal, 1 = Instrument for emulator cycle counting (forces Glider gun layout and sound off)
 
 ; ------------------------------------
 ; Constants
 ; ------------------------------------
+
+soundEnabled    equ NOISY && !TEST_PERF
+initialPattern  equ INIT_PATTERN - [TEST_PERF * INIT_PATTERN]
 
 textRow         equ ZPA0
 textRowH        equ ZPA1
@@ -67,24 +70,6 @@ charOn          equ $ff ; | normalText
 charOff         equ '  | normalText
                 endif
 
-topleft         equ %10000000                   ; Neighbor bit flags
-top             equ %01000000                   ; All combinations are decoded in conwayRules table
-topright        equ %00100000                   ; This is faster than counting neighbors each pass
-left            equ %00010000
-right           equ %00001000
-bottomleft      equ %00000100
-bottom          equ %00000010
-bottomright     equ %00000001
-
-n_topleft       equ bottomright                 ; Inverse neighbor relationships
-n_top           equ bottom
-n_topright      equ bottomleft
-n_left          equ right
-n_right         equ left
-n_bottomleft    equ topright
-n_bottom        equ top
-n_bottomright   equ topleft
-
 n_offset        equ dataWidth+1                 ; Alt data topleft offset from current cell
 
 y_topleft       equ 0                           ; Alt data pointer offsets
@@ -96,11 +81,6 @@ y_bottomleft    equ dataWidth*2
 y_bottom        equ dataWidth*2+1
 y_bottomright   equ dataWidth*2+2
 
-topRow          equ $FF ^ [ topleft | top | topright ]
-bottomRow       equ $FF ^ [ bottomleft | bottom | bottomright ]
-leftColumn      equ $FF ^ [ topleft | left | bottomleft ]
-rightColumn     equ $FF ^ [ topright | right | bottomright ]
-
 ; ------------------------------------
 ; Entry Point
 ; ------------------------------------
@@ -111,7 +91,6 @@ start           subroutine
                 lda #0
                 sta currentPage                 ; Point main data segment to first block
                 jsr OUTPORT                     ; PR#0 (Set output to 40-column text screen)
-                jsr makeRules                   ; Create Conway rules table
                 jsr initScreen                  ; Render initial cell layout
                 jsr updateData                  ; Initialize backing data based on displayed cells
                 if TEST_PERF
@@ -143,8 +122,9 @@ perfTest        subroutine
 
                 mac TURN_ON
                 ldy #y_{1}
+                clc
                 lda (altData),y
-                ora #n_{1}
+                adc #1
                 sta (altData),y
                 endm
 
@@ -164,7 +144,7 @@ iterate         subroutine
 .columnLoop     ldy .column                     ; get neighbor bit flags
                 lda (mainData),y                ; at current data address
                 tay
-                lda conwayRules,y               ; convert bit flags to cell state character (or 0 for do nothing)
+                lda rulesTable,y                ; convert bit flags to cell state character (or 0 for do nothing)
                 beq .doNothing                  ; rule says do nothing, so update the neighbor data
                 ldy #0 ; .column
 .column         equ .-1
@@ -174,13 +154,13 @@ iterate         subroutine
                 lda (textRow),y
 .setBits        cmp #charOn                     ; A = cell character
                 bne .clearTopLeft               ; cell is disabled, so clear the topleft neighbor
-                if NOISY
+                if soundEnabled
                 bit CLICK
                 endif
-                ldy #y_topleft                  ; cell is enabled, so turn on corresponding neighbor bits
-                lda #n_topleft                  ; top left neighbor is special since it contains stale data 
-                sta (altData),y                 ; so we just set the whole byte instead of ORing the bit
-                if NOISY
+                ldy #y_topleft                  ; set top left value to one (previous value is stale)
+                lda #1                          
+                sta (altData),y                 
+                if soundEnabled
                 bit CLICK                       ; (Pretend I'm not here... I just click the speaker)
                 endif
                 TURN_ON top                     
@@ -191,7 +171,7 @@ iterate         subroutine
                 TURN_ON bottom
                 TURN_ON bottomright
                 jmp .continue
-.clearTopLeft   ldy #y_topleft
+.clearTopLeft   ldy #y_topleft                  ; cell is off, so clear top left value to remove stale data
                 lda #0
                 sta (altData),y
 .continue       sec
@@ -243,9 +223,9 @@ updateData      subroutine
                 lda (textRow),y
                 cmp #charOff
                 beq .clearTopLeft
-                ldy #y_topleft                  ; cell is enabled, so turn on corresponding neighbor bits
-                lda #n_topleft                  ; top left neighbor is special since it contains stale data 
-                sta (altData),y                 ; so we just set the whole byte instead of ORing the bit
+                ldy #y_topleft                  ; set top left value to one (previous value is stale)
+                lda #1                          
+                sta (altData),y                 
                 TURN_ON top
                 TURN_ON topright
                 TURN_ON left
@@ -307,50 +287,29 @@ toggleDataPages subroutine                      ; toggles the current data page 
 clearBorders    subroutine
 
                 mac CLEAR_BORDERS
-.first          set datapg{1} + dataWidth + 1
-.last           set datapg{1}_end - [dataWidth * 2] + 1
-.clear          set datapg{2}_end - [dataWidth * 2] + 1
+.bottomRow      set datapg{2}_end - [dataWidth * 2] + 1
                 ldx #fieldWidth
-.hloop          lda .first,x
-                and #topRow
-                sta .first,x
-                lda .last,x
-                and #bottomRow
-                sta .last,x
-                lda #0
-                sta .clear,x
+.hloop          lda #0
+                sta .bottomRow,x
                 dex
                 bne .hloop
-.firstAddr      set ZPB0
-.lastAddr       set ZPB2
-.first          set datapg{1}_end - [dataWidth * 2] + 1
-.last           set .first + fieldWidth - 1
-                lda <#.first
-                sta <.firstAddr
-                lda >#.first
-                sta >.firstAddr
-                lda <#.last
-                sta <.lastAddr
-                lda >#.last
-                sta >.lastAddr
+.rightColumn    set ZPB0
+.rightAddr      set datapg{1}_end - dataWidth - 2
+                lda <#.rightAddr
+                sta <.rightColumn
+                lda >#.rightAddr
+                sta >.rightColumn
                 ldy #0
                 ldx #fieldHeight
-.vloop          lda (.firstAddr),y
-                and #leftColumn
-                sta (.firstAddr),y
-                lda (.lastAddr),y
-                and #leftColumn
-                sta (.lastAddr),y
+.vloop          lda #0
+                sta (.rightColumn),y
                 lda #dataWidth
                 sec
-                sbc <.firstAddr
+                sbc <.rightColumn
+                sta <.rightColumn
                 lda #0
-                sbc >.firstAddr
-                lda #dataWidth
-                sec
-                sbc <.lastAddr
-                lda #0
-                sbc >.lastAddr
+                sbc >.rightColumn
+                sta >.rightColumn
                 dex
                 bne .vloop
                 endm
@@ -425,70 +384,14 @@ getTextRow      subroutine
                 sta textRowH
                 rts
 
-makeRules       subroutine                      ; Generate conway rules table
-                lda #$ff
-                sta .neighbors
-.loop           jsr getRule                     ; get the on/off char based on hamming weight of .neighbors...
-                ldx #0
-.neighbors      equ .-1
-                sta conwayRules,x               ; ...and store it.
-                dec .neighbors
-                lda .neighbors
-                bne .loop
-                lda #charOff                    ; index offset 0 special handling (0 bits = 0 neighbors = turn off)
-                sta conwayRules
-                rts
-
-getRule         subroutine                      ; Returns #charOn, #charOff, or 0 (if no change)
-                jsr countBits                   ; Translate bit pattern to number of neighbors
-                cmp #2
-                bcc .off                        ; Fewer than 2 neighbors, dies of loneliness
-                cmp #3
-                beq .on                         ; Exactly 3 neighbors, reproduces
-                bcs .off                        ; More than 3 neighbors, dies of overpopulation
-                lda #0                          ; Else exactly 2 neighbors, no change
-                rts
-.off            lda #charOff
-                rts
-.on             lda #charOn
-                rts
-
-countBits       subroutine                      ; Compute Hamming Weight (number of enabled bits) in Accumulator
-.f1             equ %01010101                   ; see: https://en.wikipedia.org/wiki/Hamming_weight
-.f2             equ %00110011                   ; (Takes approx. 1/2 the time compared to lsr/adc loop.)
-.f3             equ %00001111
-                tax
-                and #.f1
-                sta .store1
-                txa
-                lsr
-                and #.f1
-                clc
-                adc #0                          ; .store1
-.store1         equ .-1
-                tax
-                and #.f2
-                sta .store2
-                txa
-                lsr
-                lsr
-                and #.f2
-                clc
-                adc #0                          ; .store2
-.store2         equ .-1
-                tax
-                and #.f3
-                sta .store3
-                txa
-                lsr
-                lsr
-                lsr
-                lsr
-                and #.f3
-                clc
-                adc #0                          ; .store3
-.store3         equ .-1
-                rts
+rulesTable      dc.b charOff
+                dc.b charOff
+                dc.b 0
+                dc.b charOn
+                dc.b charOff
+                dc.b charOff
+                dc.b charOff
+                dc.b charOff
 
 ; ------------------------------------
 ; Utilities
@@ -508,7 +411,7 @@ textRowsTable   subroutine                      ; Lookup table for text page 0 r
                 repend
                 LOG_REGION "textRowsTable", textRowsTable, 0
 
-                if INIT_PATTERN == 0             ; Glider gun
+                if initialPattern == 0             ; Glider gun
 initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%01000000,%00000000
                 dc.b %00000000,%00000000,%00000001,%01000000,%00000000
@@ -534,7 +437,7 @@ initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 endif
-                if INIT_PATTERN == 1        ; "Random"
+                if initialPattern == 1        ; "Random"
 initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%01000000
@@ -560,7 +463,7 @@ initData        dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 dc.b %00000000,%00000000,%00000000,%00000000,%00000000
                 endif
-                if INIT_PATTERN == 2        ; Edge test
+                if initialPattern == 2        ; Edge test
 initData        dc.b %11000000,%00000000,%00011000,%00000000,%00000011
                 dc.b %11000000,%00000000,%00100100,%00000000,%00000011
                 dc.b %00000000,%00000000,%00011000,%00000000,%00000000
@@ -592,9 +495,6 @@ dataSeg         equ .
                 seg.u conwayData                ; uninitialized data segment
                 org dataSeg
 
-                align 256
-conwayRules     ds.b 256                        ; character lookup table goes here (see makeRules subroutine)
-
 datapg0         ds.b dataWidth * dataHeight     ; data page 0
 datapg0_lastRow equ . - dataWidth - fieldWidth  ; first visible cell of the last row
 datapg0_tln     equ . - [n_offset * 2]          ; topleft neighbor of the bottomright-most visible cell
@@ -604,5 +504,3 @@ datapg1         ds.b dataWidth * dataHeight     ; data page 1
 datapg1_lastRow equ . - dataWidth - fieldWidth  ; first visible cell of the last row
 datapg1_tln     equ . - [n_offset * 2]          ; topleft neighbor of the bottomright-most visible cell
 datapg1_end     equ .
-
-                echo "conwayRules:", conwayRules
