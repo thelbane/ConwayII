@@ -14,7 +14,7 @@
  
 NOISY           equ 1                           ; 0 = Sound off, 1 = Sound on
 CHARSET         equ 4                           ; 0 = Olde Skoole, 1 = Pixel, 2 = Inverse, 3 = Small O's, 4 = Enhanced
-INIT_PATTERN    equ 2                           ; 0 = Glider gun, 1 = "Random", 2 = Edge test
+INIT_PATTERN    equ 0                           ; 0 = Glider gun, 1 = "Random", 2 = Edge test
 TEST_PERF       equ 0                           ; 0 = Normal, 1 = Instrument for emulator cycle counting (forces Glider gun layout and sound off)
 
 ; ------------------------------------
@@ -120,12 +120,24 @@ perfTest        subroutine
                 echo "START TIMER BREAKPOINT:",.startTimer
                 echo "END TIMER BREAKPOINT:",.endTimer
 
-                mac TURN_ON
-                ldy #y_{1}
-                clc
-                lda (altData),y
-                adc #1
-                sta (altData),y
+                mac INCREMENT_ADC
+                ldy #y_{1}                      ; +2   2
+                lda (altData),y                 ; +5/6 8
+                adc #1                          ; +5   13 Relies on carry being clear
+                sta (altData),y                 ; +6   19
+                endm
+
+                mac INCREMENT_INX
+                ldy #y_{1}                      ; +2   2
+                lda (altData),y                 ; +5/6 8
+                tax                             ; +2   10
+                inx                             ; +2   12
+                txa                             ; +2   14
+                sta (altData),y                 ; +6   20
+                endm
+
+                mac INCREMENT
+                INCREMENT_ADC {1}
                 endm
 
 iterate         subroutine
@@ -163,13 +175,14 @@ iterate         subroutine
                 if soundEnabled
                 bit CLICK                       ; (Pretend I'm not here... I just click the speaker)
                 endif
-                TURN_ON top                     
-                TURN_ON topright
-                TURN_ON left
-                TURN_ON right
-                TURN_ON bottomleft
-                TURN_ON bottom
-                TURN_ON bottomright
+                clc
+                INCREMENT top                     
+                INCREMENT topright
+                INCREMENT left
+                INCREMENT right
+                INCREMENT bottomleft
+                INCREMENT bottom
+                INCREMENT bottomright
                 jmp .continue
 .clearTopLeft   ldy #y_topleft                  ; cell is off, so clear top left value to remove stale data
                 lda #0
@@ -225,14 +238,15 @@ updateData      subroutine
                 beq .clearTopLeft
                 ldy #y_topleft                  ; set top left value to one (previous value is stale)
                 lda #1                          
-                sta (altData),y                 
-                TURN_ON top
-                TURN_ON topright
-                TURN_ON left
-                TURN_ON right
-                TURN_ON bottomleft
-                TURN_ON bottom
-                TURN_ON bottomright
+                sta (altData),y
+                clc                 
+                INCREMENT top
+                INCREMENT topright
+                INCREMENT left
+                INCREMENT right
+                INCREMENT bottomleft
+                INCREMENT bottom
+                INCREMENT bottomright
                 jmp .nextColumn
 .clearTopLeft   ldy #y_topleft
                 lda #0
