@@ -37,10 +37,10 @@ dasm src/conway.asm -oconway -v4 -f2
 
 As if by magic, you'll see the following file has been created:
 ```sh
--rw-r--r--   1 thelbane  staff   1.1K May  4 21:29 conway
+-rw-r--r--   1 thelbane  staff   814B May  6 11:45 conway
 ```
 
-Now type `./conway` and watch your so-called "modern" PC utterly fail to comprehend what to do with this 1,080 byte program. This is where a disk image utility (like AppleCommander) comes in handy.
+Now type `./conway` and watch your so-called "modern" PC utterly fail to comprehend what to do with this 814 byte program. This is where a disk image utility (like AppleCommander) comes in handy.
 
 ## It Doesn't Really Seem That Fast
 So you installed Java (twice) and found three different //e ROMs that are all slightly different, but all sort of work... and got it up and running... or you chose to just stare at the animated gif above and get all of the reward without any of the effort. And you're thinking, "He calls this 'pretty fast?' I've implemented Game of Life in Javascript, which is like today's version of BASIC, and it ran about a gajillion times faster than this."
