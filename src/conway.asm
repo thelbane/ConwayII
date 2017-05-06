@@ -409,12 +409,6 @@ rulesTable      dc.b charOff                    ;0 neighbors
                 dc.b charOff                    ;8
 
 ; ------------------------------------
-; Utilities
-; ------------------------------------
-
-                include "utilities.asm"
-
-; ------------------------------------
 ; Tables
 ; ------------------------------------
 textRowsTable   subroutine                      ; Lookup table for text page 0 row addresses

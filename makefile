@@ -9,7 +9,7 @@ _SRC = $(TARGET).asm
 SRC = $(patsubst %,$(SDIR)/%,$(_SRC))
 
 IDIR = ./include
-_DEPS = apple2.asm macros.asm utilities.asm
+_DEPS = apple2.asm macros.asm
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
 BDIR = ./build
