@@ -1,7 +1,9 @@
 TARGET = conway
+
 export FILENAME = $(shell echo $(TARGET) | tr a-z A-Z)
 TYPE = B
 
+ASM = dasm
 AC = java -jar /usr/local/bin/ac.jar
 
 SDIR = ./src
@@ -30,11 +32,11 @@ all: $(OBJ)
 
 $(OBJ): $(SRC) $(DEPS)
 	@mkdir -p $(BDIR)
-	dasm $< -o$@ -l$(LST) -v4 -f2
+	$(ASM) $< -o$@ -l$(LST) -v4 -f2
 
 $(IMAGE): $(OBJ)
 	cp $(BOOTIMAGE) $(IMAGE)
-	$(AC) -cc65 $(IMAGE) $(TARGET) $(TYPE) < $(OBJ)
+	$(AC) -cc65 $(IMAGE) $(FILENAME) $(TYPE) < $(OBJ)
 
 run: $(IMAGE)
 	osascript $(RUNNER)
