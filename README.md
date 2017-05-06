@@ -28,8 +28,8 @@ Here's a list of the prerequisites you'll need to make the `makefile` work.
 
 Once you've tried and failed to satisfy all of these requirements (because you realized too late that Virtual ][ is a Mac emulator and you're on Windows), just launch your favorite Apple II emulator and open `diskimages/conway.dsk`.
 
-### I Just Want to Assemble the Damn Thing
-If you have DASM installed, assemble the project with:
+### I Just Want to Assemble the Darn Thing
+If you have DASM installed, you should be able to `make all` or assemble the project with:
 
 ```sh
 dasm src/conway.asm -oconway -v4 -f2
