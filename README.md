@@ -28,8 +28,8 @@ Here's a list of the prerequisites you'll need to make the `makefile` work.
 
 Once you've tried and failed to satisfy all of these requirements (because you realized too late that Virtual ][ is a Mac emulator and you're on Windows), just launch your favorite Apple II emulator and open `diskimages/conway.dsk`.
 
-### I Just Want to Assemble the Damn Thing
-If you have DASM installed, assemble the project with:
+### I Just Want to Assemble the Darn Thing
+If you have DASM installed, you should be able to `make all` or assemble the project with:
 
 ```sh
 dasm src/conway.asm -oconway -v4 -f2
@@ -64,7 +64,7 @@ Still, here's a list of the optimizations I've made. (Probably not exhaustive.)
   * Starting from the bottom right-most cell we work our way left and up the screen, one row at a time.
   * For each cell:
     * Use the byte in mainData to lookup the rule in the rules table and display a character.
-    * If the cell is ON, increment the neighbor count for all surrounding cells.
+    * If the cell is ON, increment the neighbor count for all surrounding cells. If the cell is OFF, we don't have to do anything with our neighbors, resulting in substantially fewer cycles spent on empty cells.
 * Lookup table for screen addresses
   * The Apple II is weird in that text and graphics data is not stored from left to right, top to bottom, in a contiguous chunk of memory. It's stored all haphazard and non-sensical for reasons that others have pontificated on at length.
   * Needless to say, there's math to compute the addresses of a given point on the screen, but math is slow and lookup tables are silly fast.
