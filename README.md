@@ -16,7 +16,7 @@ make run
 (If this worked for you on the first try, you're officially a bigger loser than me.)
 
 ### Makefile Requirements
-Here's a list of the prerequisites you'll need to make the `makefile` work.
+Here's the list of the prerequisites you'll need to get the `makefile` to work.
 
 * [DASM](https://sourceforge.net/projects/dasm-dillon/files/dasm-dillon/) (2.20.11) - Macro assembler.
   * Make sure this is saved somewhere in your PATH.
