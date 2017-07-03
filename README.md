@@ -9,7 +9,7 @@ Who knows? Maybe you're super nerdy and have all the prerequisites to run the `m
 
 Type:
 ```sh
-git clone git@github.com:thelbane/ConwayII.git
+git clone https://github.com/thelbane/ConwayII.git
 cd ConwayII
 make run
 ```
