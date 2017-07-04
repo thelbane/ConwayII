@@ -4,7 +4,7 @@ export FILENAME = $(shell echo $(TARGET) | tr a-z A-Z)
 TYPE = B
 
 ASM = dasm
-AC = java -jar /usr/local/bin/ac.jar
+AC = java -jar ${APPLE_COMMANDER}
 
 SDIR = ./src
 _SRC = $(TARGET).asm
