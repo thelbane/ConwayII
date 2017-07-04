@@ -20,9 +20,11 @@ Here's the list of the prerequisites you'll need to get the `makefile` to work.
 
 * [DASM](https://sourceforge.net/projects/dasm-dillon/files/dasm-dillon/) (2.20.11) - Macro assembler.
   * Make sure this is saved somewhere in your PATH.
-* [AppleCommander](https://sourceforge.net/projects/applecommander/files/AppleCommander%20-%20Stable/) (1.3.5) - Apple II disk image utility.
+* [AppleCommander command-line tool](https://sourceforge.net/projects/applecommander/files/AppleCommander%20-%20Stable/) (1.3.5) - Apple II disk image utility.
+  * Make sure to download the command-line tool: "AppleCommander-*[version]*-**ac**.jar"
   * Requires Java (because this will be neither easy nor straightforward)
-  * Save the .jar file to `/usr/local/bin/ac.jar` or modify the path in the `makefile` using a text editor
+  * Create an environment variable pointing to the downloaded .jar file:
+    Example: `export APPLE_COMMANDER=/usr/local/bin/AppleCommander-1.3.5-ac.jar`
 * [Virtual \]\[](http://www.virtualii.com/) (7.6) - Apple II emulator.
   * Requires Apple II ROMs (because emulation)
 
